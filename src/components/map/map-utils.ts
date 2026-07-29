@@ -43,11 +43,16 @@ function project(lat: number, lng: number): { x: number; y: number } {
   return { x: 4 + (rawX / 100) * 92, y: 4 + (rawY / 100) * 92 };
 }
 
-/** Cosmetic pseudo-distance in "km" from the fixed mock search center. */
+/**
+ * Cosmetic pseudo-distance in "km" from the fixed mock search center.
+ * Scaled down (0.15x) from the raw lat/lng delta so the spread of mock leads
+ * (generated across several degrees for map canvas variety) maps onto the
+ * 5-150km radius slider range instead of the true ~100s-1000s km spread.
+ */
 function pseudoDistanceKm(lat: number, lng: number): number {
   const dLat = (lat - CENTER_LAT) * 111;
   const dLng = (lng - CENTER_LNG) * 111 * Math.cos((CENTER_LAT * Math.PI) / 180);
-  return Math.round(Math.sqrt(dLat * dLat + dLng * dLng) * 2.6);
+  return Math.round(Math.sqrt(dLat * dLat + dLng * dLng) * 0.15);
 }
 
 export const MAP_CENTER = project(CENTER_LAT, CENTER_LNG);
