@@ -16,8 +16,11 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.v1.router import api_router
+from config.logging_config import configure_logging
 from config.settings import settings
 from database.session import engine
+
+configure_logging("DEBUG" if settings.DEBUG else "INFO")
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.request_logging import RequestLoggingMiddleware
 from redis_cache.client import close_redis_pool, get_redis_pool

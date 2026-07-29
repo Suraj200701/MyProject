@@ -7,14 +7,14 @@ incremental development.
 
 from fastapi import APIRouter
 
-from api.v1 import health
+from api.v1 import auth, health
 
 api_router = APIRouter()
 api_router.include_router(health.router)
+api_router.include_router(auth.router)
 
 # Additional routers are registered here as they're implemented:
-#   from api.v1 import auth, users, leads, companies, search, dashboard,
+#   from api.v1 import users, leads, companies, search, dashboard,
 #       analytics, payments, subscriptions, notifications, settings as settings_routes,
 #       files, admin, map as map_routes
-# api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 # ... etc — see individual task commits for the full set.
