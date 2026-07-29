@@ -35,20 +35,29 @@ export function Hero() {
   const [visibleResults, setVisibleResults] = React.useState(0);
 
   React.useEffect(() => {
-    const interval = setInterval(() => {
-      setQueryIndex((i) => (i + 1) % QUERIES.length);
-      setVisibleResults(0);
-    }, 3200);
-    return () => clearInterval(interval);
-  }, []);
+    let cancelled = false;
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
 
-  React.useEffect(() => {
-    setVisibleResults(0);
-    const timers = RESULTS.map((_, i) =>
-      setTimeout(() => setVisibleResults((v) => Math.max(v, i + 1)), 500 + i * 380),
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [queryIndex]);
+    function runCycle() {
+      if (cancelled) return;
+      RESULTS.forEach((_, i) => {
+        timeouts.push(setTimeout(() => setVisibleResults((v) => Math.max(v, i + 1)), 500 + i * 380));
+      });
+      timeouts.push(
+        setTimeout(() => {
+          setQueryIndex((q) => (q + 1) % QUERIES.length);
+          setVisibleResults(0);
+          runCycle();
+        }, 3200),
+      );
+    }
+
+    runCycle();
+    return () => {
+      cancelled = true;
+      timeouts.forEach(clearTimeout);
+    };
+  }, []);
 
   return (
     <section className="relative overflow-hidden bg-grid pt-20 pb-24 lg:pt-28 lg:pb-32">

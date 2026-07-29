@@ -12,3 +12,11 @@ export function formatNumber(n: number) {
 export function formatCurrency(n: number, currency = "USD") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(n);
 }
+
+let idCounter = 0;
+
+/** Deterministic, collision-free id generator for client-only mock records (avoids impure Date.now()/Math.random() during render). */
+export function nextId(prefix: string) {
+  idCounter += 1;
+  return `${prefix}-${idCounter}`;
+}

@@ -23,10 +23,10 @@ import { CompanyAvatar, RatingStars, ScoreBadge, StatusBadge } from "@/component
 import { LeadNotes } from "@/components/leads/lead-notes";
 
 const TIMELINE_TEMPLATE = [
-  { label: "Discovered via {provider}", offsetDays: 12 },
-  { label: "AI lead score calculated", offsetDays: 12 },
-  { label: "Added to lead database", offsetDays: 11 },
-  { label: "Contact details enriched", offsetDays: 6 },
+  { label: "Discovered via {provider}", at: "2026-07-17T08:00:00.000Z" },
+  { label: "AI lead score calculated", at: "2026-07-17T08:05:00.000Z" },
+  { label: "Added to lead database", at: "2026-07-18T09:00:00.000Z" },
+  { label: "Contact details enriched", at: "2026-07-23T14:30:00.000Z" },
 ];
 
 const SEARCH_HISTORY_TEMPLATE = [
@@ -231,7 +231,7 @@ export default async function LeadProfilePage({ params }: { params: Promise<{ id
                     <div>
                       <p className="text-sm text-foreground">{step.label.replace("{provider}", lead.provider)}</p>
                       <p className="text-xs text-muted-foreground">
-                        {formatDistanceToNowStrict(new Date(Date.now() - step.offsetDays * 86400000), { addSuffix: true })}
+                        {formatDistanceToNowStrict(new Date(step.at), { addSuffix: true })}
                       </p>
                     </div>
                   </div>

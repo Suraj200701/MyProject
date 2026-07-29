@@ -22,7 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, nextId } from "@/lib/utils";
 import { mockLeads } from "@/lib/mock-data";
 import { EXPORT_FIELDS, type ExportFormat, type ExportRecord, type ExportSource } from "@/components/export/types";
 import { FORMAT_META } from "@/components/export/mock-data";
@@ -81,7 +81,7 @@ export function ExportWizard({ onComplete }: { onComplete: (record: ExportRecord
     await delay(300);
 
     const record: ExportRecord = {
-      id: `exp-${Date.now()}`,
+      id: nextId("exp"),
       fileName: `${fileName || "export"}.${format.toLowerCase() === "excel" ? "xlsx" : format.toLowerCase()}`,
       format,
       rowCount: sourceCount,

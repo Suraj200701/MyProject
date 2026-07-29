@@ -19,13 +19,13 @@ export function LeadNotes({ leadId }: { leadId: string }) {
       id: `${leadId}-n1`,
       author: "Suraj Gour",
       text: "Reached out via email — waiting on a response before following up by phone.",
-      createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+      createdAt: "2026-07-27T09:30:00.000Z",
     },
     {
       id: `${leadId}-n2`,
       author: "AI Assistant",
       text: "Website traffic signals suggest active expansion — good time to re-engage.",
-      createdAt: new Date(Date.now() - 6 * 3600000).toISOString(),
+      createdAt: "2026-07-28T22:00:00.000Z",
     },
   ]);
   const [draft, setDraft] = React.useState("");
