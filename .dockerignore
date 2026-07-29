@@ -1,0 +1,7 @@
+node_modules/
+.next/
+backend/
+.git/
+.devtools/
+.claude/
+*.tsbuildinfo
