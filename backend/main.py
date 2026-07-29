@@ -10,6 +10,7 @@ Production:
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -76,12 +77,23 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        # exc.errors() can include a raw Python exception object under
+        # error["ctx"]["error"] when a Pydantic field_validator raises a
+        # plain ValueError — that's not JSON-serializable, so stringify it
+        # before it hits the encoder.
+        errors = []
+        for error in exc.errors():
+            ctx = error.get("ctx")
+            if isinstance(ctx, dict) and isinstance(ctx.get("error"), Exception):
+                error = {**error, "ctx": {**ctx, "error": str(ctx["error"])}}
+            errors.append(error)
+
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={
                 "success": False,
                 "message": "Validation error",
-                "errors": exc.errors(),
+                "errors": jsonable_encoder(errors),
             },
         )
 
