@@ -148,6 +148,68 @@ class Settings(BaseSettings):
     LOGIN_RATE_LIMIT_PER_MINUTE: int = 10
     OTP_RATE_LIMIT_PER_HOUR: int = 5
 
+    # --- Field-level encryption (provider credentials / API keys at rest) ---
+    # Fernet key. Generate with:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Supports rotation: comma-separated, NEWEST FIRST. The first key encrypts;
+    # all keys are tried when decrypting, so old ciphertext keeps working.
+    PROVIDER_CREDENTIAL_ENCRYPTION_KEY: str = ""
+
+    @computed_field
+    @property
+    def encryption_keys_list(self) -> list[str]:
+        return [k.strip() for k in self.PROVIDER_CREDENTIAL_ENCRYPTION_KEY.split(",") if k.strip()]
+
+    # --- Credit metering ---
+    # Charged per result returned by a provider that has no explicit
+    # `ApiProvider.credit_cost` set. Provider rows override this.
+    DEFAULT_SEARCH_CREDIT_COST_PER_RESULT: int = 1
+    # Flat cost of one website scan.
+    SCANNER_CREDITS_PER_SCAN: int = 1
+    # Hard cap on results sourced from a single provider in one search —
+    # bounds both credit spend and (later) third-party API cost.
+    #
+    # This also sets the ceiling on what a search can reserve, so it has to
+    # stay affordable on the smallest plan: with the seeded provider costs
+    # (6 credit-units per result across the 5 lead-sourcing providers), a cap
+    # of 5 reserves 30 credits, giving the 100-credit Free plan 3 searches.
+    # Raising it without raising Free-plan credits would make Free unusable —
+    # every search would 402 before it started.
+    SEARCH_MAX_RESULTS_PER_PROVIDER: int = 5
+    # Master switch. When false, operations run without touching the wallet
+    # (matches pre-metering behaviour) — lets metering be rolled out safely.
+    CREDIT_METERING_ENABLED: bool = True
+
+    # --- Website scanner: outbound fetch safety (SSRF hardening) ---
+    SCANNER_TIMEOUT_SECONDS: float = 15.0
+    SCANNER_CONNECT_TIMEOUT_SECONDS: float = 5.0
+    SCANNER_MAX_PAGE_BYTES: int = 5 * 1024 * 1024  # 5 MB
+    SCANNER_MAX_REDIRECTS: int = 5
+    SCANNER_USER_AGENT: str = "LeadMasterBot/1.0 (+https://leadmaster.ai/bot)"
+    # Ports the scanner may connect to. Business sites live on 80/443; a
+    # permissive list is an SSRF amplifier, so this stays narrow by default.
+    SCANNER_ALLOWED_PORTS: str = "80,443"
+    # MUST remain false in production. When true, private/loopback targets are
+    # permitted — only ever for local development against a test server.
+    SCANNER_ALLOW_PRIVATE_NETWORKS: bool = False
+    # Extra hostnames/domains to refuse outright, comma-separated.
+    SCANNER_BLOCKED_DOMAINS: str = ""
+
+    @computed_field
+    @property
+    def scanner_allowed_ports_set(self) -> set[int]:
+        ports: set[int] = set()
+        for chunk in self.SCANNER_ALLOWED_PORTS.split(","):
+            chunk = chunk.strip()
+            if chunk.isdigit():
+                ports.add(int(chunk))
+        return ports or {80, 443}
+
+    @computed_field
+    @property
+    def scanner_blocked_domains_set(self) -> set[str]:
+        return {d.strip().lower().lstrip(".") for d in self.SCANNER_BLOCKED_DOMAINS.split(",") if d.strip()}
+
     # --- Frontend ---
     FRONTEND_URL: str = "http://localhost:3000"
 

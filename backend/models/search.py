@@ -24,7 +24,12 @@ class ApiProvider(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     usage_limit: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     connected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Encrypted at rest via utils/crypto.py — never store plaintext here.
     api_key_encrypted: Mapped[str | None] = mapped_column(Text)
+    # Credits charged per result sourced from this provider. Lets an expensive
+    # provider cost more than a cheap one without a redeploy. Falls back to
+    # settings.DEFAULT_SEARCH_CREDIT_COST_PER_RESULT when NULL.
+    credit_cost: Mapped[int | None] = mapped_column(Integer, server_default="1")
 
 
 class Search(Base, UUIDPrimaryKeyMixin, TimestampMixin):

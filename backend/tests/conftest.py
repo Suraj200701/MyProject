@@ -14,6 +14,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 os.environ["POSTGRES_DB"] = "leadmaster_test"
 
+# The whole suite hits the API from a single client IP, so the production
+# per-IP budget (60 req/min) throttles the run itself once the suite grows
+# past ~60 requests in a minute — surfacing as spurious 429s in whichever
+# tests happen to run last. Raise the ceiling for tests only; the limiter
+# middleware still executes, so its code path stays covered.
+os.environ["RATE_LIMIT_PER_MINUTE"] = "100000"
+
 from config.settings import get_settings  # noqa: E402
 
 get_settings.cache_clear()
@@ -66,6 +73,18 @@ async def client():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+@pytest_asyncio.fixture
+async def db_session():
+    """A session for asserting on / manipulating DB state inside a test.
+
+    Separate from the request-scoped sessions the app itself uses, so a test
+    can set up a balance, drive the API, then read back what changed.
+    """
+    async with db_session_module.AsyncSessionLocal() as session:
+        yield session
+        await session.rollback()
 
 
 @pytest_asyncio.fixture

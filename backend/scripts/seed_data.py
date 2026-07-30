@@ -69,14 +69,19 @@ PLANS = [
     },
 ]
 
+# (name, category, logo, description, usage_limit, credit_cost)
+# `credit_cost` = credits charged per result sourced from this provider.
+# Rough proxy for what each provider costs us: Google Places Text Search is
+# billed per request at a premium, the Indian B2B directories are cheaper
+# per lead, and enrichment-only providers don't source leads at all.
 PROVIDERS = [
-    ("Google Places", ProviderCategory.MAPS, "🗺️", "Business discovery & place details", 10000),
-    ("Mappls (MapmyIndia)", ProviderCategory.MAPS, "📍", "India-focused maps & POI search", 5000),
-    ("IndiaMART", ProviderCategory.BUSINESS, "🏭", "B2B supplier & manufacturer directory", 2000),
-    ("TradeIndia", ProviderCategory.BUSINESS, "🤝", "Trade leads and supplier network", 2000),
-    ("LinkedIn Sales Navigator", ProviderCategory.CRM, "💼", "Contact enrichment & company data", 1000),
-    ("OpenAI GPT", ProviderCategory.AI, "✨", "AI summaries & lead scoring", 25000),
-    ("JustDial", ProviderCategory.SEARCH, "🔍", "Local business search India", 5000),
+    ("Google Places", ProviderCategory.MAPS, "🗺️", "Business discovery & place details", 10000, 2),
+    ("Mappls (MapmyIndia)", ProviderCategory.MAPS, "📍", "India-focused maps & POI search", 5000, 1),
+    ("IndiaMART", ProviderCategory.BUSINESS, "🏭", "B2B supplier & manufacturer directory", 2000, 1),
+    ("TradeIndia", ProviderCategory.BUSINESS, "🤝", "Trade leads and supplier network", 2000, 1),
+    ("LinkedIn Sales Navigator", ProviderCategory.CRM, "💼", "Contact enrichment & company data", 1000, 3),
+    ("OpenAI GPT", ProviderCategory.AI, "✨", "AI summaries & lead scoring", 25000, 0),
+    ("JustDial", ProviderCategory.SEARCH, "🔍", "Local business search India", 5000, 1),
 ]
 
 
@@ -131,9 +136,14 @@ async def seed() -> None:
                 continue
             session.add(SubscriptionPlan(**plan))
 
-        existing_providers = {p.name for p in (await session.execute(select(ApiProvider))).scalars().all()}
-        for name, category, logo, description, usage_limit in PROVIDERS:
-            if name in existing_providers:
+        existing_provider_rows = {p.name: p for p in (await session.execute(select(ApiProvider))).scalars().all()}
+        for name, category, logo, description, usage_limit, credit_cost in PROVIDERS:
+            existing = existing_provider_rows.get(name)
+            if existing is not None:
+                # Backfill the metering cost on rows seeded before the
+                # credit_cost column existed (they default to 1).
+                if existing.credit_cost is None:
+                    existing.credit_cost = credit_cost
                 continue
             session.add(
                 ApiProvider(
@@ -144,6 +154,7 @@ async def seed() -> None:
                     description=description,
                     usage_limit=usage_limit,
                     connected=False,
+                    credit_cost=credit_cost,
                 )
             )
 
