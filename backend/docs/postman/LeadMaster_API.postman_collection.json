@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "d3551b0c-167f-4057-909d-eb5b2af79c5e",
+    "_postman_id": "a934bc6e-bd2e-40ec-b6cd-c083a9cb2c84",
     "name": "LeadMaster AI API",
     "description": "Auto-generated from the live OpenAPI schema. Run 'Auth > Login' first \u2014 it saves {{access_token}}/{{refresh_token}} automatically via a test script.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -18,7 +18,7 @@
   "variable": [
     {
       "key": "base_url",
-      "value": "http://localhost:8000",
+      "value": "http://localhost:8001",
       "type": "string"
     },
     {
@@ -1027,6 +1027,82 @@
           "response": []
         },
         {
+          "name": "List Provider Credentials",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/providers/credentials",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "providers",
+                "credentials"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Set Provider Credentials",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/providers/{provider_id}/credentials",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "providers",
+                "{provider_id}",
+                "credentials"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api_key\": \"theme\",\n  \"api_secret\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Clear Provider Credentials",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/providers/{provider_id}/credentials",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "providers",
+                "{provider_id}",
+                "credentials"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "Scan Website",
           "request": {
             "method": "POST",
@@ -1360,6 +1436,26 @@
                 "v1",
                 "billing",
                 "plans"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Credit Packs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/billing/credit-packs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "billing",
+                "credit-packs"
               ]
             }
           },
@@ -2837,6 +2933,46 @@
           "response": []
         },
         {
+          "name": "List Roles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/team/roles",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "team",
+                "roles"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Permissions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/team/permissions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "team",
+                "permissions"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "Invite Member",
           "request": {
             "method": "POST",
@@ -3024,6 +3160,197 @@
                   "language": "json"
                 }
               }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Exports",
+      "item": [
+        {
+          "name": "Create an export",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resource\": \"leads\",\n  \"format\": \"csv\",\n  \"scope\": \"all\",\n  \"lead_ids\": [\n    \"3fa85f64-5717-4562-b3fc-2c963f66afa6\"\n  ],\n  \"filters\": {\n    \"search\": \"string\",\n    \"industry\": \"Panel Builders\",\n    \"status\": \"string\",\n    \"country\": \"India\",\n    \"min_score\": 0.0,\n    \"max_score\": 0.0,\n    \"sort_by\": \"created_at\",\n    \"sort_order\": \"desc\"\n  },\n  \"search_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"columns\": [\n    \"string\"\n  ],\n  \"file_name\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List export history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports"
+              ],
+              "query": [
+                {
+                  "key": "resource",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page_size",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List supported export formats and lead columns",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/formats",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "formats"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get one export's status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/{export_id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "{export_id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete an export and its file",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/{export_id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "{export_id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Mint a short-lived download token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/{export_id}/download-token",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "{export_id}",
+                "download-token"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Download an export file",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exports/{export_id}/download",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "{export_id}",
+                "download"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
             }
           },
           "response": []

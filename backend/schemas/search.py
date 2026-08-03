@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -82,3 +83,39 @@ class WebsiteScanOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ProviderCredentialFieldOut(BaseModel):
+    """Describes one credential input, so the UI doesn't hardcode labels."""
+
+    label: str
+    env_var: str
+    is_set: bool
+
+
+class ProviderCredentialStatusOut(BaseModel):
+    """Whether a provider has credentials — never the credentials themselves.
+
+    `source` says which value the search pipeline will actually use:
+      * `workspace`     — the encrypted values stored on this provider row
+      * `environment`   — the platform-wide `.env` values
+      * `unset`         — nothing configured; the provider is skipped
+      * `none_required` — this provider needs no credentials
+    """
+
+    provider_id: uuid.UUID
+    name: str
+    source: Literal["workspace", "environment", "unset", "none_required"]
+    key: ProviderCredentialFieldOut | None = None
+    secret: ProviderCredentialFieldOut | None = None
+    help_url: str | None = None
+
+
+class ProviderCredentialUpdate(BaseModel):
+    """Write-only. Omit a field to leave the stored value untouched.
+
+    Values are encrypted before storage and are never returned by any endpoint.
+    """
+
+    api_key: str | None = Field(default=None, min_length=1, max_length=1000)
+    api_secret: str | None = Field(default=None, min_length=1, max_length=1000)

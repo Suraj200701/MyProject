@@ -164,7 +164,8 @@ All 6 stat cards, all 6 charts: 🟢 direct swap. All routes need `Authorization
 |---|---|---|
 | Provider grid (`apiProviders` mock) | 🟢 `GET /providers` | Field names match closely: `usage`→`usage_count`, `limit`→`usage_limit`, everything else identical. |
 | Stat row (connected count, requests today, avg latency, issues) | 🟡 Compute client-side from the `/providers` response | No dedicated aggregate endpoint — trivial to derive in the frontend from the list, same as the current mock version does. |
-| "Test Connection" / mock JSON response preview | — | 🔴 No real per-provider test endpoint exists server-side; keep as a frontend-only simulation, or scope a new `POST /providers/{id}/test` endpoint. |
+| "Test Connection" / mock JSON response preview | — | 🔴 No real per-provider test endpoint exists server-side; the Testing tab now explains how to verify a provider for real (run a search and read its provider runs). |
+| Credentials tab | 🟢 `GET /providers/credentials`, `PUT /providers/{id}/credentials`, `DELETE /providers/{id}/credentials` | Write-only: values are encrypted with `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` and never returned, so the form reports whether each field is set rather than pre-filling it. Requires the `api_keys.manage` permission. Providers needing a pair (Mappls: client id + secret) use `api_secret` as well. |
 | "Connect"/"Disconnect" toggle, credential management, sparkline | — | 🔴 Not modeled server-side — `ApiProvider.connected` and `api_key_encrypted` columns exist in the DB but there's no route to mutate them yet (open item, see §17). |
 | Usage Analytics chart | 🟢 `GET /dashboard/api-usage` | |
 

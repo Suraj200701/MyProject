@@ -238,6 +238,31 @@ export interface ApiProviderOut {
   connected: boolean;
 }
 
+/** One credential input. `is_set` says whether a value is stored — never the value. */
+export interface ProviderCredentialFieldOut {
+  label: string;
+  env_var: string;
+  is_set: boolean;
+}
+
+/**
+ * Whether a provider has credentials, and which value the search pipeline uses.
+ * Credential values are write-only server-side and are never returned.
+ */
+export interface ProviderCredentialStatusOut {
+  provider_id: string;
+  name: string;
+  source: "workspace" | "environment" | "unset" | "none_required";
+  key: ProviderCredentialFieldOut | null;
+  secret: ProviderCredentialFieldOut | null;
+  help_url: string | null;
+}
+
+export interface ProviderCredentialUpdateBody {
+  api_key?: string;
+  api_secret?: string;
+}
+
 export interface SocialLinkResult {
   platform: string;
   found: boolean;

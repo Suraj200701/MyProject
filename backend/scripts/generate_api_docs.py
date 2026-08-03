@@ -7,7 +7,12 @@ Outputs:
     backend/docs/postman/LeadMaster_API.postman_collection.json
     backend/docs/postman/LeadMaster_API.postman_environment.json
 
-Usage (with the API running locally on :8000):
+The schema is built **in-process** from the FastAPI app rather than scraped
+from a running server. Scraping meant the docs silently described whatever
+process happened to be listening on a hardcoded port — including a stale one
+started before the routes you just added.
+
+Usage (no server needed):
     python -m scripts.generate_api_docs
 """
 
@@ -17,17 +22,19 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-import httpx
+from config.settings import settings
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DOCS_DIR = BASE_DIR / "docs"
 POSTMAN_DIR = DOCS_DIR / "postman"
-OPENAPI_URL = "http://127.0.0.1:8000/openapi.json"
-
 # Origin only — OpenAPI paths already carry the /api/v1 prefix. Setting this
 # to ".../api/v1" made every generated Postman request resolve to
 # /api/v1/api/v1/... and 404.
-POSTMAN_BASE_URL = "http://localhost:8000"
+#
+# Follows the configured PORT so the examples match how this deployment
+# actually runs, instead of a hardcoded 8000 that stopped being true when
+# `.env` set PORT=8001.
+POSTMAN_BASE_URL = f"http://localhost:{settings.PORT}"
 
 SAMPLE_UUID = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
 
@@ -104,6 +111,7 @@ TAG_ORDER = [
     "Admin",
     "Settings",
     "Team",
+    "Exports",
 ]
 
 TAG_INTRO = {
@@ -119,6 +127,7 @@ TAG_INTRO = {
     "Map": "Geocoding, nearby-place search, and distance calculation. `/map/nearby-leads` works with no API key.",
     "Admin": "Platform-wide superadmin endpoints — every route requires `is_superadmin=true` on the caller.",
     "Settings": "Profile, organization, personal API keys, generic settings store, and backup snapshots.",
+    "Exports": "Export Center — generate CSV/Excel/PDF/JSON exports of leads, search results, and reports, then download them via a signed URL.",
     "Team": "Workspace membership, invitations, and role management.",
 }
 
@@ -302,9 +311,14 @@ def build_curl(
 
 
 def load_spec() -> dict:
-    resp = httpx.get(OPENAPI_URL, timeout=10)
-    resp.raise_for_status()
-    return resp.json()
+    """Builds the OpenAPI schema straight from the app object.
+
+    Importing `main` is enough — FastAPI generates the schema from the
+    registered routes, so this cannot describe a different process's routes.
+    """
+    from main import app
+
+    return app.openapi()
 
 
 def slugify(text: str) -> str:
@@ -314,7 +328,7 @@ def slugify(text: str) -> str:
 def main() -> None:
     spec = load_spec()
     components = spec.get("components", {})
-    base_url = "http://localhost:8000"
+    base_url = POSTMAN_BASE_URL
 
     # --- group operations by tag, preserving TAG_ORDER ---
     by_tag: dict[str, list[tuple[str, str, dict]]] = {tag: [] for tag in TAG_ORDER}
@@ -325,13 +339,23 @@ def main() -> None:
             tag = (operation.get("tags") or ["Other"])[0]
             by_tag.setdefault(tag, []).append((method, path, operation))
 
+    # Anything tagged outside TAG_ORDER would be counted but never rendered,
+    # which is how the entire Exports module went missing from these docs.
+    unlisted = sorted(tag for tag, ops in by_tag.items() if ops and tag not in TAG_ORDER)
+    if unlisted:
+        raise SystemExit(
+            f"Tag(s) {unlisted} are not in TAG_ORDER — their endpoints would be "
+            f"silently omitted from the docs and Postman collection. Add them "
+            f"(and a TAG_INTRO entry) to scripts/generate_api_docs.py."
+        )
+
     total_endpoints = sum(len(v) for v in by_tag.values())
 
     # ================= Markdown =================
     md: list[str] = []
     md.append("# LeadMaster AI — API Testing Guide\n")
     md.append(
-        f"Auto-generated from the live OpenAPI schema (`{OPENAPI_URL}`) — "
+        f"Auto-generated from the FastAPI app's own OpenAPI schema — "
         f"every example below reflects the actual request/response models in the code, "
         f"not hand-written guesses. {total_endpoints} endpoints across {len([t for t in by_tag if by_tag[t]])} modules.\n"
     )

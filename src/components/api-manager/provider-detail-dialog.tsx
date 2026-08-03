@@ -12,6 +12,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusPill } from "@/components/api-manager/status-pill";
+import { CredentialsForm } from "@/components/api-manager/credentials-form";
 import {
   isNearQuota,
   latencyLabel,
@@ -30,9 +31,10 @@ import {
  *     test-connection endpoint, so the tab now explains how to verify a
  *     provider for real (run a search and read its provider runs).
  *   * **Credentials** — displayed a plausible `sk_live_…` key and a
- *     "Regenerate key" button that only re-seeded the fake string. Provider
- *     credentials are stored encrypted server-side and are deliberately never
- *     returned by any endpoint, so the tab now says where keys are actually set.
+ *     "Regenerate key" button that only re-seeded the fake string. The tab now
+ *     writes real credentials through `PUT /providers/{id}/credentials`, which
+ *     encrypts them server-side. They are still never returned by any endpoint,
+ *     so the form reports whether each field is set rather than pre-filling it.
  *   * **Usage** — a 7-day sparkline built from a PRNG. `ApiProvider` holds one
  *     cumulative `usage_count`, not a time series, so the tab shows real
  *     cumulative usage against the real quota instead of an invented history.
@@ -116,22 +118,7 @@ export function ProviderDetailDialog({
           </TabsContent>
 
           <TabsContent value="credentials">
-            <p className="text-xs text-muted-foreground">
-              Provider credentials are stored encrypted on the server and are never sent back to
-              the browser — not even masked.
-            </p>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Set them as environment variables on the backend (for example{" "}
-              <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-[11px]">
-                GOOGLE_MAPS_API_KEY
-              </code>
-              ,{" "}
-              <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-[11px]">
-                MAPPLS_CLIENT_ID
-              </code>
-              ), then restart the API. A provider with no credentials is skipped during a search
-              rather than charged for.
-            </p>
+            <CredentialsForm providerId={provider.id} />
           </TabsContent>
 
           <TabsContent value="testing">

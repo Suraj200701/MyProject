@@ -1,16 +1,27 @@
 """Lead search, provider catalogue, and website scanner endpoints."""
 
+import uuid
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_organization, get_current_user
+from api.deps import get_current_organization, get_current_user, require_permission
 from database.session import get_db
 from models.organization import Organization
 from models.search import ApiProvider, Search, WebsiteScan
 from models.user import User
-from schemas.search import ApiProviderOut, SearchCreate, SearchOut, WebsiteScanCreate, WebsiteScanOut
-from services import search_service, usage_service
+from schemas.common import MessageResponse
+from schemas.search import (
+    ApiProviderOut,
+    ProviderCredentialStatusOut,
+    ProviderCredentialUpdate,
+    SearchCreate,
+    SearchOut,
+    WebsiteScanCreate,
+    WebsiteScanOut,
+)
+from services import provider_service, search_service, usage_service
 from utils.pagination import Page, PaginationParams, paginate, pagination_params
 
 router = APIRouter(tags=["Search"])
@@ -76,6 +87,80 @@ async def search_history(
 async def list_providers(db: AsyncSession = Depends(get_db)):
     providers = (await db.execute(select(ApiProvider).order_by(ApiProvider.name))).scalars().all()
     return providers
+
+
+def _to_credential_status(status) -> ProviderCredentialStatusOut:
+    """`CredentialStatus` -> wire shape. Deliberately carries no secret values."""
+    spec = status.spec
+    key = None
+    secret = None
+    if spec is not None:
+        key = {
+            "label": spec.key_label,
+            "env_var": spec.key_env_var,
+            "is_set": status.has_stored_key,
+        }
+        if spec.secret_label is not None:
+            secret = {
+                "label": spec.secret_label,
+                "env_var": spec.secret_env_var,
+                "is_set": status.has_stored_secret,
+            }
+    return ProviderCredentialStatusOut(
+        provider_id=status.provider_id,
+        name=status.name,
+        source=status.source,
+        key=key,
+        secret=secret,
+        help_url=spec.help_url if spec else None,
+    )
+
+
+@router.get("/providers/credentials", response_model=list[ProviderCredentialStatusOut])
+async def list_provider_credentials(
+    _membership=Depends(require_permission("api_keys.manage")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Which providers have credentials, and where the effective value comes from.
+
+    Returns no credential values — only whether each field is set. Reading this
+    requires `api_keys.manage` because the set/unset pattern across providers is
+    itself infrastructure information.
+    """
+    statuses = await provider_service.list_credential_status(db)
+    return [_to_credential_status(s) for s in statuses]
+
+
+@router.put("/providers/{provider_id}/credentials", response_model=ProviderCredentialStatusOut)
+async def set_provider_credentials(
+    provider_id: uuid.UUID,
+    payload: ProviderCredentialUpdate,
+    _membership=Depends(require_permission("api_keys.manage")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stores encrypted credentials for one provider.
+
+    Write-only: the response reports that the values are set, never what they
+    are. Omit a field to leave it unchanged, so the secret of a pair can be
+    rotated without re-entering the id.
+    """
+    status = await provider_service.set_credentials(
+        db, provider_id, api_key=payload.api_key, api_secret=payload.api_secret
+    )
+    await db.commit()
+    return _to_credential_status(status)
+
+
+@router.delete("/providers/{provider_id}/credentials", response_model=ProviderCredentialStatusOut)
+async def clear_provider_credentials(
+    provider_id: uuid.UUID,
+    _membership=Depends(require_permission("api_keys.manage")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Removes this workspace's stored credentials, reverting to the `.env` values."""
+    status = await provider_service.clear_credentials(db, provider_id)
+    await db.commit()
+    return _to_credential_status(status)
 
 
 @router.post("/scan-website", response_model=WebsiteScanOut, status_code=201)

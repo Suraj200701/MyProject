@@ -1,9 +1,10 @@
 """Maps `ApiProvider` database rows to concrete adapter instances.
 
 Resolution order for credentials, most specific first:
-  1. The provider row's own `api_key_encrypted` (decrypted via `utils.crypto`) —
-     lets one workspace bring its own key.
-  2. The platform-wide key from settings.
+  1. The provider row's own encrypted credentials (`api_key_encrypted`, and
+     `api_secret_encrypted` for providers that authenticate with a pair) —
+     lets one workspace bring its own keys, editable from the API Manager.
+  2. The platform-wide values from settings / `.env`.
   3. Neither -> the adapter reports itself unconfigured and is skipped, so no
      credits are spent on a call that cannot succeed.
 
@@ -15,6 +16,7 @@ not returned as a lead source — that is expected, not an error.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from models.search import ApiProvider
 from services.providers.base import LeadProvider
@@ -26,40 +28,81 @@ from utils import crypto
 
 logger = logging.getLogger("leadmaster.providers.registry")
 
-# Provider-row name -> factory taking an optional per-row credential.
+
+@dataclass(frozen=True)
+class CredentialSpec:
+    """What a provider needs to authenticate, and what to call it in the UI.
+
+    `secret_label is None` means the provider takes a single value; Mappls is
+    the one that needs a pair (client id + secret) for its OAuth exchange.
+    """
+
+    key_label: str
+    key_env_var: str
+    secret_label: str | None = None
+    secret_env_var: str | None = None
+    help_url: str | None = None
+
+
+# Provider-row name -> what credentials it accepts. Also drives the API
+# Manager's Credentials form, so the labels live here rather than in the client.
+PROVIDER_CREDENTIAL_SPECS: dict[str, CredentialSpec] = {
+    "Google Places": CredentialSpec(
+        key_label="API key",
+        key_env_var="GOOGLE_MAPS_API_KEY",
+        help_url="https://developers.google.com/maps/documentation/places/web-service/get-api-key",
+    ),
+    "Mappls (MapmyIndia)": CredentialSpec(
+        key_label="Client ID",
+        key_env_var="MAPPLS_CLIENT_ID",
+        secret_label="Client secret",
+        secret_env_var="MAPPLS_CLIENT_SECRET",
+        help_url="https://apis.mappls.com/console/",
+    ),
+    "Bing Search": CredentialSpec(
+        key_label="API key",
+        key_env_var="BING_SEARCH_API_KEY",
+        help_url="https://portal.azure.com/",
+    ),
+}
+
+# Provider-row name -> factory taking the decrypted (key, secret) pair.
 _ADAPTER_FACTORIES: dict[str, callable] = {
-    "Google Places": lambda key: GooglePlacesProvider(api_key=key),
-    "Mappls (MapmyIndia)": lambda key: MapplsProvider(client_id=None, client_secret=None),
-    "Bing Search": lambda key: BingSearchProvider(api_key=key),
-    "Company Website Search": lambda key: WebsiteSearchProvider(),
+    "Google Places": lambda key, secret: GooglePlacesProvider(api_key=key),
+    "Mappls (MapmyIndia)": lambda key, secret: MapplsProvider(client_id=key, client_secret=secret),
+    "Bing Search": lambda key, secret: BingSearchProvider(api_key=key),
+    # Crawls sites found from the query itself — no third-party credential.
+    "Company Website Search": lambda key, secret: WebsiteSearchProvider(),
 }
 
 # Names that source leads. Anything else in the catalogue is enrichment-only.
 LEAD_SOURCE_NAMES = frozenset(_ADAPTER_FACTORIES)
 
 
-def _decrypt_row_key(row: ApiProvider) -> str | None:
-    """Decrypts a per-provider key, tolerating an unconfigured/rotated keyring.
+def _decrypt(ciphertext: str | None, provider_name: str, field: str) -> str | None:
+    """Decrypts one stored credential, tolerating an unconfigured/rotated keyring.
 
     A decryption failure must not break search — it degrades to the platform
     key (or to skipping the provider), and is logged loudly enough to notice.
     """
-    if not row.api_key_encrypted:
+    if not ciphertext:
         return None
     if not crypto.is_configured():
         logger.warning(
-            "Provider %s has a stored credential but PROVIDER_CREDENTIAL_ENCRYPTION_KEY "
-            "is not set — falling back to the platform key.",
-            row.name,
+            "Provider %s has a stored %s but PROVIDER_CREDENTIAL_ENCRYPTION_KEY "
+            "is not set — falling back to the platform value.",
+            provider_name,
+            field,
         )
         return None
     try:
-        return crypto.decrypt(row.api_key_encrypted)
+        return crypto.decrypt(ciphertext)
     except crypto.DecryptionError:
         logger.error(
-            "Could not decrypt the stored credential for provider %s — it may have been "
-            "encrypted with a retired key. Falling back to the platform key.",
-            row.name,
+            "Could not decrypt the stored %s for provider %s — it may have been "
+            "encrypted with a retired key. Falling back to the platform value.",
+            field,
+            provider_name,
         )
         return None
 
@@ -69,7 +112,9 @@ def build_adapter(row: ApiProvider) -> LeadProvider | None:
     factory = _ADAPTER_FACTORIES.get(row.name)
     if factory is None:
         return None
-    return factory(_decrypt_row_key(row))
+    key = _decrypt(row.api_key_encrypted, row.name, "API key")
+    secret = _decrypt(getattr(row, "api_secret_encrypted", None), row.name, "API secret")
+    return factory(key, secret)
 
 
 def resolve_lead_providers(rows: list[ApiProvider]) -> list[tuple[ApiProvider, LeadProvider]]:

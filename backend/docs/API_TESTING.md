@@ -1,11 +1,11 @@
 # LeadMaster AI — API Testing Guide
 
-Auto-generated from the live OpenAPI schema (`http://127.0.0.1:8000/openapi.json`) — every example below reflects the actual request/response models in the code, not hand-written guesses. 109 endpoints across 14 modules.
+Auto-generated from the FastAPI app's own OpenAPI schema — every example below reflects the actual request/response models in the code, not hand-written guesses. 115 endpoints across 14 modules.
 
 ## Base URL
 
 ```
-http://localhost:8000/api/v1
+http://localhost:8001/api/v1
 ```
 
 ## Authentication
@@ -23,16 +23,17 @@ Endpoints tagged **org-scoped** additionally resolve the caller's active organiz
 - [Health](#health) — 2 endpoint(s)
 - [Auth](#auth) — 16 endpoint(s)
 - [Leads](#leads) — 10 endpoint(s)
-- [Search](#search) — 5 endpoint(s)
+- [Search](#search) — 8 endpoint(s)
 - [Dashboard](#dashboard) — 7 endpoint(s)
 - [Analytics](#analytics) — 5 endpoint(s)
-- [Billing](#billing) — 10 endpoint(s)
+- [Billing](#billing) — 11 endpoint(s)
 - [Files](#files) — 5 endpoint(s)
 - [Notifications](#notifications) — 7 endpoint(s)
 - [Map](#map) — 6 endpoint(s)
 - [Admin](#admin) — 10 endpoint(s)
 - [Settings](#settings) — 11 endpoint(s)
-- [Team](#team) — 8 endpoint(s)
+- [Team](#team) — 10 endpoint(s)
+- [Exports](#exports) — 7 endpoint(s)
 
 
 ---
@@ -47,7 +48,7 @@ Liveness/readiness probes — no auth required.
 **Health**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/health`
+- **URL:** `http://localhost:8001/api/v1/health`
 - **Authentication:** None — public endpoint.
 
 **Headers:**
@@ -63,7 +64,7 @@ Liveness/readiness probes — no auth required.
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/health"
+  "http://localhost:8001/api/v1/health"
 ```
 
 ### `GET /api/v1/health/ready`
@@ -71,7 +72,7 @@ curl -X GET \
 **Readiness**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/health/ready`
+- **URL:** `http://localhost:8001/api/v1/health/ready`
 - **Authentication:** None — public endpoint.
 
 **Headers:**
@@ -87,7 +88,7 @@ curl -X GET \
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/health/ready"
+  "http://localhost:8001/api/v1/health/ready"
 ```
 
 ---
@@ -102,7 +103,7 @@ Signup, login, tokens, password reset, email verification, OTP login, Google OAu
 **Signup**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/auth/signup`
+- **URL:** `http://localhost:8001/api/v1/auth/signup`
 - **Authentication:** None — public endpoint.
 
 **Headers:**
@@ -153,7 +154,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/auth/signup" \
+  "http://localhost:8001/api/v1/auth/signup" \
   -H "Content-Type: application/json" \
   -d '{
   "email": "founder@acmecorp.com",
@@ -168,7 +169,7 @@ curl -X POST \
 **Login**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/auth/login`
+- **URL:** `http://localhost:8001/api/v1/auth/login`
 - **Authentication:** None — public endpoint.
 
 **Headers:**
@@ -218,7 +219,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/auth/login" \
+  "http://localhost:8001/api/v1/auth/login" \
   -H "Content-Type: application/json" \
   -d '{
   "email": "founder@acmecorp.com",
@@ -232,7 +233,7 @@ curl -X POST \
 **Refresh**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/auth/refresh`
+- **URL:** `http://localhost:8001/api/v1/auth/refresh`
 - **Authentication:** None — public endpoint.
 
 **Headers:**
@@ -280,7 +281,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/auth/refresh" \
+  "http://localhost:8001/api/v1/auth/refresh" \
   -H "Content-Type: application/json" \
   -d '{
   "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -292,7 +293,7 @@ curl -X POST \
 **Logout**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/auth/logout`
+- **URL:** `http://localhost:8001/api/v1/auth/logout`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>`
 
 **Headers:**
@@ -311,7 +312,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/auth/logout" \
+  "http://localhost:8001/api/v1/auth/logout" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -320,7 +321,7 @@ curl -X POST \
 **Me**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/auth/me`
+- **URL:** `http://localhost:8001/api/v1/auth/me`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>`
 
 **Headers:**
@@ -356,7 +357,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/auth/me" \
+  "http://localhost:8001/api/v1/auth/me" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -365,7 +366,7 @@ curl -X GET \
 **Change Password**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/auth/change-password`
+- **URL:** `http://localhost:8001/api/v1/auth/change-password`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>`
 
 **Headers:**
@@ -393,7 +394,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/auth/change-password" \
+  "http://localhost:8001/api/v1/auth/change-password" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -407,7 +408,7 @@ curl -X POST \
 **Forgot Password**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/auth/forgot-password`
+- **URL:** `http://localhost:8001/api/v1/auth/forgot-password`
 - **Authentication:** None — public endpoint.
 
 **Headers:**
@@ -433,7 +434,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/auth/forgot-password" \
+  "http://localhost:8001/api/v1/auth/forgot-password" \
   -H "Content-Type: application/json" \
   -d '{
   "email": "founder@acmecorp.com"
@@ -445,7 +446,7 @@ curl -X POST \
 **Reset Password**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/auth/reset-password`
+- **URL:** `http://localhost:8001/api/v1/auth/reset-password`
 - **Authentication:** None — public endpoint.
 
 **Headers:**
@@ -472,7 +473,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/auth/reset-password" \
+  "http://localhost:8001/api/v1/auth/reset-password" \
   -H "Content-Type: application/json" \
   -d '{
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
@@ -485,7 +486,7 @@ curl -X POST \
 **Verify Email**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/auth/verify-email`
+- **URL:** `http://localhost:8001/api/v1/auth/verify-email`
 - **Authentication:** None — public endpoint.
 
 **Headers:**
@@ -511,7 +512,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/auth/verify-email" \
+  "http://localhost:8001/api/v1/auth/verify-email" \
   -H "Content-Type: application/json" \
   -d '{
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -523,7 +524,7 @@ curl -X POST \
 **Resend Verification**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/auth/resend-verification`
+- **URL:** `http://localhost:8001/api/v1/auth/resend-verification`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>`
 
 **Headers:**
@@ -542,7 +543,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/auth/resend-verification" \
+  "http://localhost:8001/api/v1/auth/resend-verification" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -551,7 +552,7 @@ curl -X POST \
 **Request Otp**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/auth/otp/request`
+- **URL:** `http://localhost:8001/api/v1/auth/otp/request`
 - **Authentication:** None — public endpoint.
 
 **Headers:**
@@ -578,7 +579,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/auth/otp/request" \
+  "http://localhost:8001/api/v1/auth/otp/request" \
   -H "Content-Type: application/json" \
   -d '{
   "email": "founder@acmecorp.com",
@@ -591,7 +592,7 @@ curl -X POST \
 **Verify Otp Endpoint**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/auth/otp/verify`
+- **URL:** `http://localhost:8001/api/v1/auth/otp/verify`
 - **Authentication:** None — public endpoint.
 
 **Headers:**
@@ -641,7 +642,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/auth/otp/verify" \
+  "http://localhost:8001/api/v1/auth/otp/verify" \
   -H "Content-Type: application/json" \
   -d '{
   "email": "founder@acmecorp.com",
@@ -655,7 +656,7 @@ curl -X POST \
 **List Sessions**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/auth/sessions`
+- **URL:** `http://localhost:8001/api/v1/auth/sessions`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>`
 
 **Headers:**
@@ -681,7 +682,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/auth/sessions" \
+  "http://localhost:8001/api/v1/auth/sessions" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -690,7 +691,7 @@ curl -X GET \
 **Revoke Session**
 
 - **Method:** `DELETE`
-- **URL:** `http://localhost:8000/api/v1/auth/sessions/{session_id}`
+- **URL:** `http://localhost:8001/api/v1/auth/sessions/{session_id}`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>`
 - **Path parameters:**
   - `session_id` (string) — required
@@ -711,7 +712,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X DELETE \
-  "http://localhost:8000/api/v1/auth/sessions/{session_id}" \
+  "http://localhost:8001/api/v1/auth/sessions/{session_id}" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -720,7 +721,7 @@ curl -X DELETE \
 **Google Login**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/auth/google/login`
+- **URL:** `http://localhost:8001/api/v1/auth/google/login`
 - **Authentication:** None — public endpoint.
 
 **Headers:**
@@ -736,7 +737,7 @@ curl -X DELETE \
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/auth/google/login"
+  "http://localhost:8001/api/v1/auth/google/login"
 ```
 
 ### `GET /api/v1/auth/google/callback`
@@ -744,7 +745,7 @@ curl -X GET \
 **Google Callback**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/auth/google/callback`
+- **URL:** `http://localhost:8001/api/v1/auth/google/callback`
 - **Authentication:** None — public endpoint.
 - **Query parameters:**
   - `code` (string) *(required)*
@@ -763,7 +764,7 @@ curl -X GET \
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/auth/google/callback"
+  "http://localhost:8001/api/v1/auth/google/callback"
 ```
 
 ---
@@ -778,7 +779,7 @@ Lead CRUD, notes, and activity timeline. Every query is scoped to the caller's c
 **List Leads**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/leads`
+- **URL:** `http://localhost:8001/api/v1/leads`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Query parameters:**
   - `search` (string)
@@ -841,7 +842,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/leads" \
+  "http://localhost:8001/api/v1/leads" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -850,7 +851,7 @@ curl -X GET \
 **Create Lead**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/leads`
+- **URL:** `http://localhost:8001/api/v1/leads`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -917,7 +918,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/leads" \
+  "http://localhost:8001/api/v1/leads" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -949,7 +950,7 @@ curl -X POST \
 **Get Lead**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/leads/{lead_id}`
+- **URL:** `http://localhost:8001/api/v1/leads/{lead_id}`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `lead_id` (string) — required
@@ -1010,7 +1011,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/leads/{lead_id}" \
+  "http://localhost:8001/api/v1/leads/{lead_id}" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1019,7 +1020,7 @@ curl -X GET \
 **Update Lead**
 
 - **Method:** `PATCH`
-- **URL:** `http://localhost:8000/api/v1/leads/{lead_id}`
+- **URL:** `http://localhost:8001/api/v1/leads/{lead_id}`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `lead_id` (string) — required
@@ -1077,7 +1078,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X PATCH \
-  "http://localhost:8000/api/v1/leads/{lead_id}" \
+  "http://localhost:8001/api/v1/leads/{lead_id}" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1098,7 +1099,7 @@ curl -X PATCH \
 **Delete Lead**
 
 - **Method:** `DELETE`
-- **URL:** `http://localhost:8000/api/v1/leads/{lead_id}`
+- **URL:** `http://localhost:8001/api/v1/leads/{lead_id}`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `lead_id` (string) — required
@@ -1119,7 +1120,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X DELETE \
-  "http://localhost:8000/api/v1/leads/{lead_id}" \
+  "http://localhost:8001/api/v1/leads/{lead_id}" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1128,7 +1129,7 @@ curl -X DELETE \
 **Import Leads Csv**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/leads/import`
+- **URL:** `http://localhost:8001/api/v1/leads/import`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -1164,7 +1165,7 @@ Content-Type: multipart/form-data
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/leads/import" \
+  "http://localhost:8001/api/v1/leads/import" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -F "file=@/path/to/file.pdf"
 ```
@@ -1174,7 +1175,7 @@ curl -X POST \
 **Bulk Delete Leads**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/leads/bulk-delete`
+- **URL:** `http://localhost:8001/api/v1/leads/bulk-delete`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -1203,7 +1204,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/leads/bulk-delete" \
+  "http://localhost:8001/api/v1/leads/bulk-delete" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1218,7 +1219,7 @@ curl -X POST \
 **Add Note**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/leads/{lead_id}/notes`
+- **URL:** `http://localhost:8001/api/v1/leads/{lead_id}/notes`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `lead_id` (string) — required
@@ -1250,7 +1251,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/leads/{lead_id}/notes" \
+  "http://localhost:8001/api/v1/leads/{lead_id}/notes" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1263,7 +1264,7 @@ curl -X POST \
 **List Notes**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/leads/{lead_id}/notes`
+- **URL:** `http://localhost:8001/api/v1/leads/{lead_id}/notes`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `lead_id` (string) — required
@@ -1289,7 +1290,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/leads/{lead_id}/notes" \
+  "http://localhost:8001/api/v1/leads/{lead_id}/notes" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1298,7 +1299,7 @@ curl -X GET \
 **List Activities**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/leads/{lead_id}/activities`
+- **URL:** `http://localhost:8001/api/v1/leads/{lead_id}/activities`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `lead_id` (string) — required
@@ -1325,7 +1326,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/leads/{lead_id}/activities" \
+  "http://localhost:8001/api/v1/leads/{lead_id}/activities" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1341,7 +1342,7 @@ Runs a lead search (persists real Lead/Company rows), lists the provider catalog
 **Create Search**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/search`
+- **URL:** `http://localhost:8001/api/v1/search`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -1384,7 +1385,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/search" \
+  "http://localhost:8001/api/v1/search" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1400,7 +1401,7 @@ curl -X POST \
 **Search History**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/search/history`
+- **URL:** `http://localhost:8001/api/v1/search/history`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Query parameters:**
   - `page` (integer, default: `1`)
@@ -1447,7 +1448,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/search/history" \
+  "http://localhost:8001/api/v1/search/history" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1456,7 +1457,7 @@ curl -X GET \
 **List Providers**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/providers`
+- **URL:** `http://localhost:8001/api/v1/providers`
 - **Authentication:** None — public endpoint.
 
 **Headers:**
@@ -1485,7 +1486,147 @@ curl -X GET \
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/providers"
+  "http://localhost:8001/api/v1/providers"
+```
+
+### `GET /api/v1/providers/credentials`
+
+**List Provider Credentials**
+
+- **Method:** `GET`
+- **URL:** `http://localhost:8001/api/v1/providers/credentials`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response Body** (`200`):
+```json
+[
+  {
+    "provider_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "name": "string",
+    "source": "workspace",
+    "key": {
+      "label": "Manual backup",
+      "env_var": "string",
+      "is_set": true
+    },
+    "secret": {
+      "label": "Manual backup",
+      "env_var": "string",
+      "is_set": true
+    },
+    "help_url": "https://acmesupplies.com"
+  }
+]
+```
+
+**Example curl:**
+```bash
+curl -X GET \
+  "http://localhost:8001/api/v1/providers/credentials" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### `PUT /api/v1/providers/{provider_id}/credentials`
+
+**Set Provider Credentials**
+
+- **Method:** `PUT`
+- **URL:** `http://localhost:8001/api/v1/providers/{provider_id}/credentials`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
+- **Path parameters:**
+  - `provider_id` (string) — required
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "api_key": "theme",
+  "api_secret": "string"
+}
+```
+
+**Response Body** (`200`):
+```json
+{
+  "provider_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "name": "string",
+  "source": "workspace",
+  "key": {
+    "label": "Manual backup",
+    "env_var": "string",
+    "is_set": true
+  },
+  "secret": {
+    "label": "Manual backup",
+    "env_var": "string",
+    "is_set": true
+  },
+  "help_url": "https://acmesupplies.com"
+}
+```
+
+**Example curl:**
+```bash
+curl -X PUT \
+  "http://localhost:8001/api/v1/providers/{provider_id}/credentials" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "api_key": "theme",
+  "api_secret": "string"
+}'
+```
+
+### `DELETE /api/v1/providers/{provider_id}/credentials`
+
+**Clear Provider Credentials**
+
+- **Method:** `DELETE`
+- **URL:** `http://localhost:8001/api/v1/providers/{provider_id}/credentials`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
+- **Path parameters:**
+  - `provider_id` (string) — required
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response Body** (`200`):
+```json
+{
+  "provider_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "name": "string",
+  "source": "workspace",
+  "key": {
+    "label": "Manual backup",
+    "env_var": "string",
+    "is_set": true
+  },
+  "secret": {
+    "label": "Manual backup",
+    "env_var": "string",
+    "is_set": true
+  },
+  "help_url": "https://acmesupplies.com"
+}
+```
+
+**Example curl:**
+```bash
+curl -X DELETE \
+  "http://localhost:8001/api/v1/providers/{provider_id}/credentials" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
 ### `POST /api/v1/scan-website`
@@ -1493,7 +1634,7 @@ curl -X GET \
 **Scan Website**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/scan-website`
+- **URL:** `http://localhost:8001/api/v1/scan-website`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -1545,7 +1686,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/scan-website" \
+  "http://localhost:8001/api/v1/scan-website" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1558,7 +1699,7 @@ curl -X POST \
 **List Scans**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/scans`
+- **URL:** `http://localhost:8001/api/v1/scans`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Query parameters:**
   - `page` (integer, default: `1`)
@@ -1617,7 +1758,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/scans" \
+  "http://localhost:8001/api/v1/scans" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1633,7 +1774,7 @@ Real aggregate stats/charts for the dashboard home page.
 **Get Stats**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/dashboard/stats`
+- **URL:** `http://localhost:8001/api/v1/dashboard/stats`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -1657,7 +1798,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/dashboard/stats" \
+  "http://localhost:8001/api/v1/dashboard/stats" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1666,7 +1807,7 @@ curl -X GET \
 **Get Lead Growth**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/dashboard/lead-growth`
+- **URL:** `http://localhost:8001/api/v1/dashboard/lead-growth`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -1688,7 +1829,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/dashboard/lead-growth" \
+  "http://localhost:8001/api/v1/dashboard/lead-growth" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1697,7 +1838,7 @@ curl -X GET \
 **Get Industry Distribution**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/dashboard/industry-distribution`
+- **URL:** `http://localhost:8001/api/v1/dashboard/industry-distribution`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -1718,7 +1859,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/dashboard/industry-distribution" \
+  "http://localhost:8001/api/v1/dashboard/industry-distribution" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1727,7 +1868,7 @@ curl -X GET \
 **Get Country Analytics**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/dashboard/country-analytics`
+- **URL:** `http://localhost:8001/api/v1/dashboard/country-analytics`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -1748,7 +1889,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/dashboard/country-analytics" \
+  "http://localhost:8001/api/v1/dashboard/country-analytics" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1757,7 +1898,7 @@ curl -X GET \
 **Get Search Analytics**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/dashboard/search-analytics`
+- **URL:** `http://localhost:8001/api/v1/dashboard/search-analytics`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -1778,7 +1919,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/dashboard/search-analytics" \
+  "http://localhost:8001/api/v1/dashboard/search-analytics" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1787,7 +1928,7 @@ curl -X GET \
 **Get Api Usage**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/dashboard/api-usage`
+- **URL:** `http://localhost:8001/api/v1/dashboard/api-usage`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -1809,7 +1950,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/dashboard/api-usage" \
+  "http://localhost:8001/api/v1/dashboard/api-usage" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1818,7 +1959,7 @@ curl -X GET \
 **Get Export Analytics**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/dashboard/export-analytics`
+- **URL:** `http://localhost:8001/api/v1/dashboard/export-analytics`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -1841,7 +1982,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/dashboard/export-analytics" \
+  "http://localhost:8001/api/v1/dashboard/export-analytics" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1857,7 +1998,7 @@ Deeper lead-intelligence analytics: top industries/cities, quality bands, provid
 **Get Top Industries**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/analytics/top-industries`
+- **URL:** `http://localhost:8001/api/v1/analytics/top-industries`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -1878,7 +2019,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/analytics/top-industries" \
+  "http://localhost:8001/api/v1/analytics/top-industries" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1887,7 +2028,7 @@ curl -X GET \
 **Get Top Cities**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/analytics/top-cities`
+- **URL:** `http://localhost:8001/api/v1/analytics/top-cities`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -1909,7 +2050,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/analytics/top-cities" \
+  "http://localhost:8001/api/v1/analytics/top-cities" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1918,7 +2059,7 @@ curl -X GET \
 **Get Lead Quality**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/analytics/lead-quality`
+- **URL:** `http://localhost:8001/api/v1/analytics/lead-quality`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -1943,7 +2084,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/analytics/lead-quality" \
+  "http://localhost:8001/api/v1/analytics/lead-quality" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1952,7 +2093,7 @@ curl -X GET \
 **Get Provider Performance**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/analytics/provider-performance`
+- **URL:** `http://localhost:8001/api/v1/analytics/provider-performance`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -1978,7 +2119,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/analytics/provider-performance" \
+  "http://localhost:8001/api/v1/analytics/provider-performance" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -1987,7 +2128,7 @@ curl -X GET \
 **Get Business Summary**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/analytics/business-summary`
+- **URL:** `http://localhost:8001/api/v1/analytics/business-summary`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -2009,7 +2150,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/analytics/business-summary" \
+  "http://localhost:8001/api/v1/analytics/business-summary" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2025,7 +2166,7 @@ Stripe-backed subscriptions, checkout, usage, payments/transactions/invoices, an
 **List Plans**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/billing/plans`
+- **URL:** `http://localhost:8001/api/v1/billing/plans`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -2055,7 +2196,39 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/billing/plans" \
+  "http://localhost:8001/api/v1/billing/plans" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### `GET /api/v1/billing/credit-packs`
+
+**List Credit Packs**
+
+- **Method:** `GET`
+- **URL:** `http://localhost:8001/api/v1/billing/credit-packs`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response Body** (`200`):
+```json
+[
+  {
+    "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "credits": 1,
+    "amount_cents": 1,
+    "currency": "usd"
+  }
+]
+```
+
+**Example curl:**
+```bash
+curl -X GET \
+  "http://localhost:8001/api/v1/billing/credit-packs" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2064,7 +2237,7 @@ curl -X GET \
 **Get Subscription**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/billing/subscription`
+- **URL:** `http://localhost:8001/api/v1/billing/subscription`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -2099,7 +2272,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/billing/subscription" \
+  "http://localhost:8001/api/v1/billing/subscription" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2108,7 +2281,7 @@ curl -X GET \
 **Get Usage**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/billing/usage`
+- **URL:** `http://localhost:8001/api/v1/billing/usage`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -2131,7 +2304,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/billing/usage" \
+  "http://localhost:8001/api/v1/billing/usage" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2140,7 +2313,7 @@ curl -X GET \
 **Create Checkout**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/billing/checkout`
+- **URL:** `http://localhost:8001/api/v1/billing/checkout`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -2166,7 +2339,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/billing/checkout" \
+  "http://localhost:8001/api/v1/billing/checkout" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -2179,7 +2352,7 @@ curl -X POST \
 **Create Credit Topup Checkout**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/billing/credits/checkout`
+- **URL:** `http://localhost:8001/api/v1/billing/credits/checkout`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -2206,7 +2379,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/billing/credits/checkout" \
+  "http://localhost:8001/api/v1/billing/credits/checkout" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -2220,7 +2393,7 @@ curl -X POST \
 **List Payments**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/billing/payments`
+- **URL:** `http://localhost:8001/api/v1/billing/payments`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Query parameters:**
   - `page` (integer, default: `1`)
@@ -2259,7 +2432,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/billing/payments" \
+  "http://localhost:8001/api/v1/billing/payments" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2268,7 +2441,7 @@ curl -X GET \
 **List Transactions**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/billing/transactions`
+- **URL:** `http://localhost:8001/api/v1/billing/transactions`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Query parameters:**
   - `page` (integer, default: `1`)
@@ -2307,7 +2480,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/billing/transactions" \
+  "http://localhost:8001/api/v1/billing/transactions" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2316,7 +2489,7 @@ curl -X GET \
 **List Invoices**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/billing/invoices`
+- **URL:** `http://localhost:8001/api/v1/billing/invoices`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Query parameters:**
   - `page` (integer, default: `1`)
@@ -2357,7 +2530,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/billing/invoices" \
+  "http://localhost:8001/api/v1/billing/invoices" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2366,7 +2539,7 @@ curl -X GET \
 **Refund Payment**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/billing/payments/{payment_id}/refund`
+- **URL:** `http://localhost:8001/api/v1/billing/payments/{payment_id}/refund`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `payment_id` (string) — required
@@ -2392,7 +2565,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/billing/payments/{payment_id}/refund" \
+  "http://localhost:8001/api/v1/billing/payments/{payment_id}/refund" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2401,7 +2574,7 @@ curl -X POST \
 **Stripe Webhook**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/billing/webhook`
+- **URL:** `http://localhost:8001/api/v1/billing/webhook`
 - **Authentication:** None — public endpoint. (trust established via Stripe-Signature header verification instead)
 
 **Headers:**
@@ -2420,7 +2593,7 @@ curl -X POST \
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/billing/webhook"
+  "http://localhost:8001/api/v1/billing/webhook"
 ```
 
 ---
@@ -2435,7 +2608,7 @@ Upload/download/delete documents (avatars, exports, attachments) via the pluggab
 **Upload File**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/files/upload`
+- **URL:** `http://localhost:8001/api/v1/files/upload`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -2474,7 +2647,7 @@ Content-Type: multipart/form-data
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/files/upload" \
+  "http://localhost:8001/api/v1/files/upload" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -F "file=@/path/to/file.pdf" \
   -F "kind=document" \
@@ -2487,7 +2660,7 @@ curl -X POST \
 **List Files**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/files`
+- **URL:** `http://localhost:8001/api/v1/files`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Query parameters:**
   - `entity_type` (string)
@@ -2529,7 +2702,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/files" \
+  "http://localhost:8001/api/v1/files" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2538,7 +2711,7 @@ curl -X GET \
 **Get File Metadata**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/files/{document_id}`
+- **URL:** `http://localhost:8001/api/v1/files/{document_id}`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `document_id` (string) — required
@@ -2566,7 +2739,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/files/{document_id}" \
+  "http://localhost:8001/api/v1/files/{document_id}" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2575,7 +2748,7 @@ curl -X GET \
 **Delete File**
 
 - **Method:** `DELETE`
-- **URL:** `http://localhost:8000/api/v1/files/{document_id}`
+- **URL:** `http://localhost:8001/api/v1/files/{document_id}`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `document_id` (string) — required
@@ -2596,7 +2769,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X DELETE \
-  "http://localhost:8000/api/v1/files/{document_id}" \
+  "http://localhost:8001/api/v1/files/{document_id}" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2605,7 +2778,7 @@ curl -X DELETE \
 **Download File**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/files/{document_id}/download`
+- **URL:** `http://localhost:8001/api/v1/files/{document_id}/download`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `document_id` (string) — required
@@ -2623,7 +2796,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/files/{document_id}/download" \
+  "http://localhost:8001/api/v1/files/{document_id}/download" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2639,7 +2812,7 @@ In-app notifications, read/unread state, per-category preferences, and push subs
 **List Notifications**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/notifications`
+- **URL:** `http://localhost:8001/api/v1/notifications`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>`
 - **Query parameters:**
   - `unread_only` (boolean, default: `False`)
@@ -2678,7 +2851,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/notifications" \
+  "http://localhost:8001/api/v1/notifications" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2687,7 +2860,7 @@ curl -X GET \
 **Unread Count**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/notifications/unread-count`
+- **URL:** `http://localhost:8001/api/v1/notifications/unread-count`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>`
 
 **Headers:**
@@ -2706,7 +2879,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/notifications/unread-count" \
+  "http://localhost:8001/api/v1/notifications/unread-count" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2715,7 +2888,7 @@ curl -X GET \
 **Mark Read**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/notifications/{notification_id}/read`
+- **URL:** `http://localhost:8001/api/v1/notifications/{notification_id}/read`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>`
 - **Path parameters:**
   - `notification_id` (string) — required
@@ -2740,7 +2913,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/notifications/{notification_id}/read" \
+  "http://localhost:8001/api/v1/notifications/{notification_id}/read" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2749,7 +2922,7 @@ curl -X POST \
 **Mark All Read**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/notifications/read-all`
+- **URL:** `http://localhost:8001/api/v1/notifications/read-all`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>`
 
 **Headers:**
@@ -2768,7 +2941,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/notifications/read-all" \
+  "http://localhost:8001/api/v1/notifications/read-all" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2777,7 +2950,7 @@ curl -X POST \
 **Get Preferences**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/notifications/preferences`
+- **URL:** `http://localhost:8001/api/v1/notifications/preferences`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>`
 
 **Headers:**
@@ -2800,7 +2973,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/notifications/preferences" \
+  "http://localhost:8001/api/v1/notifications/preferences" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2809,7 +2982,7 @@ curl -X GET \
 **Update Preference**
 
 - **Method:** `PATCH`
-- **URL:** `http://localhost:8000/api/v1/notifications/preferences/{category}`
+- **URL:** `http://localhost:8001/api/v1/notifications/preferences/{category}`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>`
 - **Path parameters:**
   - `category` (string) — required
@@ -2842,7 +3015,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X PATCH \
-  "http://localhost:8000/api/v1/notifications/preferences/{category}" \
+  "http://localhost:8001/api/v1/notifications/preferences/{category}" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -2857,7 +3030,7 @@ curl -X PATCH \
 **Register Push Subscription**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/notifications/push-subscriptions`
+- **URL:** `http://localhost:8001/api/v1/notifications/push-subscriptions`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>`
 
 **Headers:**
@@ -2886,7 +3059,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/notifications/push-subscriptions" \
+  "http://localhost:8001/api/v1/notifications/push-subscriptions" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -2908,7 +3081,7 @@ Geocoding, nearby-place search, and distance calculation. `/map/nearby-leads` wo
 **Geocode**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/map/geocode`
+- **URL:** `http://localhost:8001/api/v1/map/geocode`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -2936,7 +3109,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/map/geocode" \
+  "http://localhost:8001/api/v1/map/geocode" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -2949,7 +3122,7 @@ curl -X POST \
 **Reverse Geocode**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/map/reverse-geocode`
+- **URL:** `http://localhost:8001/api/v1/map/reverse-geocode`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Query parameters:**
   - `lat` (number) *(required)*
@@ -2972,7 +3145,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/map/reverse-geocode" \
+  "http://localhost:8001/api/v1/map/reverse-geocode" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -2981,7 +3154,7 @@ curl -X GET \
 **Autocomplete**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/map/autocomplete`
+- **URL:** `http://localhost:8001/api/v1/map/autocomplete`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Query parameters:**
   - `query` (string) *(required)*
@@ -3001,7 +3174,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/map/autocomplete" \
+  "http://localhost:8001/api/v1/map/autocomplete" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3010,7 +3183,7 @@ curl -X GET \
 **Nearby Leads**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/map/nearby-leads`
+- **URL:** `http://localhost:8001/api/v1/map/nearby-leads`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -3048,7 +3221,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/map/nearby-leads" \
+  "http://localhost:8001/api/v1/map/nearby-leads" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -3064,7 +3237,7 @@ curl -X POST \
 **Nearby Places**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/map/nearby-places`
+- **URL:** `http://localhost:8001/api/v1/map/nearby-places`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Query parameters:**
   - `lat` (number) *(required)*
@@ -3085,7 +3258,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/map/nearby-places" \
+  "http://localhost:8001/api/v1/map/nearby-places" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3094,7 +3267,7 @@ curl -X GET \
 **Distance Matrix**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/map/distance-matrix`
+- **URL:** `http://localhost:8001/api/v1/map/distance-matrix`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Query parameters:**
   - `origin_lat` (number) *(required)*
@@ -3114,7 +3287,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/map/distance-matrix" \
+  "http://localhost:8001/api/v1/map/distance-matrix" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3130,7 +3303,7 @@ Platform-wide superadmin endpoints — every route requires `is_superadmin=true`
 **Get Stats**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/admin/stats`
+- **URL:** `http://localhost:8001/api/v1/admin/stats`
 - **Authentication:** **Required — superadmin only.** `Authorization: Bearer <access_token>` for a user with `is_superadmin=true`.
 
 **Headers:**
@@ -3153,7 +3326,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/admin/stats" \
+  "http://localhost:8001/api/v1/admin/stats" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3162,7 +3335,7 @@ curl -X GET \
 **List Users**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/admin/users`
+- **URL:** `http://localhost:8001/api/v1/admin/users`
 - **Authentication:** **Required — superadmin only.** `Authorization: Bearer <access_token>` for a user with `is_superadmin=true`.
 - **Query parameters:**
   - `search` (string)
@@ -3204,7 +3377,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/admin/users" \
+  "http://localhost:8001/api/v1/admin/users" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3213,7 +3386,7 @@ curl -X GET \
 **Set User Status**
 
 - **Method:** `PATCH`
-- **URL:** `http://localhost:8000/api/v1/admin/users/{user_id}/status`
+- **URL:** `http://localhost:8001/api/v1/admin/users/{user_id}/status`
 - **Authentication:** **Required — superadmin only.** `Authorization: Bearer <access_token>` for a user with `is_superadmin=true`.
 - **Path parameters:**
   - `user_id` (string) — required
@@ -3248,7 +3421,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X PATCH \
-  "http://localhost:8000/api/v1/admin/users/{user_id}/status" \
+  "http://localhost:8001/api/v1/admin/users/{user_id}/status" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -3261,7 +3434,7 @@ curl -X PATCH \
 **List Organizations**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/admin/organizations`
+- **URL:** `http://localhost:8001/api/v1/admin/organizations`
 - **Authentication:** **Required — superadmin only.** `Authorization: Bearer <access_token>` for a user with `is_superadmin=true`.
 - **Query parameters:**
   - `search` (string)
@@ -3301,7 +3474,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/admin/organizations" \
+  "http://localhost:8001/api/v1/admin/organizations" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3310,7 +3483,7 @@ curl -X GET \
 **Get Organization**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/admin/organizations/{org_id}`
+- **URL:** `http://localhost:8001/api/v1/admin/organizations/{org_id}`
 - **Authentication:** **Required — superadmin only.** `Authorization: Bearer <access_token>` for a user with `is_superadmin=true`.
 - **Path parameters:**
   - `org_id` (string) — required
@@ -3336,7 +3509,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/admin/organizations/{org_id}" \
+  "http://localhost:8001/api/v1/admin/organizations/{org_id}" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3345,7 +3518,7 @@ curl -X GET \
 **List Subscriptions**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/admin/subscriptions`
+- **URL:** `http://localhost:8001/api/v1/admin/subscriptions`
 - **Authentication:** **Required — superadmin only.** `Authorization: Bearer <access_token>` for a user with `is_superadmin=true`.
 - **Query parameters:**
   - `status` (string)
@@ -3388,7 +3561,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/admin/subscriptions" \
+  "http://localhost:8001/api/v1/admin/subscriptions" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3397,7 +3570,7 @@ curl -X GET \
 **List Payments**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/admin/payments`
+- **URL:** `http://localhost:8001/api/v1/admin/payments`
 - **Authentication:** **Required — superadmin only.** `Authorization: Bearer <access_token>` for a user with `is_superadmin=true`.
 - **Query parameters:**
   - `status` (string)
@@ -3439,7 +3612,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/admin/payments" \
+  "http://localhost:8001/api/v1/admin/payments" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3448,7 +3621,7 @@ curl -X GET \
 **List Leads**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/admin/leads`
+- **URL:** `http://localhost:8001/api/v1/admin/leads`
 - **Authentication:** **Required — superadmin only.** `Authorization: Bearer <access_token>` for a user with `is_superadmin=true`.
 - **Query parameters:**
   - `page` (integer, default: `1`)
@@ -3486,7 +3659,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/admin/leads" \
+  "http://localhost:8001/api/v1/admin/leads" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3495,7 +3668,7 @@ curl -X GET \
 **Delete Lead**
 
 - **Method:** `DELETE`
-- **URL:** `http://localhost:8000/api/v1/admin/leads/{lead_id}`
+- **URL:** `http://localhost:8001/api/v1/admin/leads/{lead_id}`
 - **Authentication:** **Required — superadmin only.** `Authorization: Bearer <access_token>` for a user with `is_superadmin=true`.
 - **Path parameters:**
   - `lead_id` (string) — required
@@ -3516,7 +3689,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X DELETE \
-  "http://localhost:8000/api/v1/admin/leads/{lead_id}" \
+  "http://localhost:8001/api/v1/admin/leads/{lead_id}" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3525,7 +3698,7 @@ curl -X DELETE \
 **List Activity Logs**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/admin/activity-logs`
+- **URL:** `http://localhost:8001/api/v1/admin/activity-logs`
 - **Authentication:** **Required — superadmin only.** `Authorization: Bearer <access_token>` for a user with `is_superadmin=true`.
 - **Query parameters:**
   - `user_id` (string)
@@ -3570,7 +3743,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/admin/activity-logs" \
+  "http://localhost:8001/api/v1/admin/activity-logs" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3586,7 +3759,7 @@ Profile, organization, personal API keys, generic settings store, and backup sna
 **Get Profile**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/settings/profile`
+- **URL:** `http://localhost:8001/api/v1/settings/profile`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -3611,7 +3784,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/settings/profile" \
+  "http://localhost:8001/api/v1/settings/profile" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3620,7 +3793,7 @@ curl -X GET \
 **Update Profile**
 
 - **Method:** `PATCH`
-- **URL:** `http://localhost:8000/api/v1/settings/profile`
+- **URL:** `http://localhost:8001/api/v1/settings/profile`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -3657,7 +3830,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X PATCH \
-  "http://localhost:8000/api/v1/settings/profile" \
+  "http://localhost:8001/api/v1/settings/profile" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -3674,7 +3847,7 @@ curl -X PATCH \
 **Get Organization**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/settings/organization`
+- **URL:** `http://localhost:8001/api/v1/settings/organization`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -3692,14 +3865,15 @@ Authorization: Bearer <access_token>
   "website": "https://acmecorp.com",
   "logo_url": "https://acmesupplies.com",
   "timezone": "Asia/Kolkata",
-  "locale": "en-IN"
+  "locale": "en-IN",
+  "created_at": "2026-07-30T09:00:00Z"
 }
 ```
 
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/settings/organization" \
+  "http://localhost:8001/api/v1/settings/organization" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3708,7 +3882,7 @@ curl -X GET \
 **Update Organization**
 
 - **Method:** `PATCH`
-- **URL:** `http://localhost:8000/api/v1/settings/organization`
+- **URL:** `http://localhost:8001/api/v1/settings/organization`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -3739,14 +3913,15 @@ Content-Type: application/json
   "website": "https://acmecorp.com",
   "logo_url": "https://acmesupplies.com",
   "timezone": "Asia/Kolkata",
-  "locale": "en-IN"
+  "locale": "en-IN",
+  "created_at": "2026-07-30T09:00:00Z"
 }
 ```
 
 **Example curl:**
 ```bash
 curl -X PATCH \
-  "http://localhost:8000/api/v1/settings/organization" \
+  "http://localhost:8001/api/v1/settings/organization" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -3764,7 +3939,7 @@ curl -X PATCH \
 **List Api Keys**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/settings/api-keys`
+- **URL:** `http://localhost:8001/api/v1/settings/api-keys`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -3789,7 +3964,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/settings/api-keys" \
+  "http://localhost:8001/api/v1/settings/api-keys" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3798,7 +3973,7 @@ curl -X GET \
 **Create Api Key**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/settings/api-keys`
+- **URL:** `http://localhost:8001/api/v1/settings/api-keys`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -3830,7 +4005,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/settings/api-keys" \
+  "http://localhost:8001/api/v1/settings/api-keys" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -3843,7 +4018,7 @@ curl -X POST \
 **Revoke Api Key**
 
 - **Method:** `DELETE`
-- **URL:** `http://localhost:8000/api/v1/settings/api-keys/{key_id}`
+- **URL:** `http://localhost:8001/api/v1/settings/api-keys/{key_id}`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `key_id` (string) — required
@@ -3864,7 +4039,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X DELETE \
-  "http://localhost:8000/api/v1/settings/api-keys/{key_id}" \
+  "http://localhost:8001/api/v1/settings/api-keys/{key_id}" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3873,7 +4048,7 @@ curl -X DELETE \
 **List Backups**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/settings/backups`
+- **URL:** `http://localhost:8001/api/v1/settings/backups`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -3897,7 +4072,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/settings/backups" \
+  "http://localhost:8001/api/v1/settings/backups" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3906,7 +4081,7 @@ curl -X GET \
 **Create Backup**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/settings/backups`
+- **URL:** `http://localhost:8001/api/v1/settings/backups`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -3936,7 +4111,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/settings/backups" \
+  "http://localhost:8001/api/v1/settings/backups" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -3949,7 +4124,7 @@ curl -X POST \
 **Get Setting**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/settings/{scope}/{key}`
+- **URL:** `http://localhost:8001/api/v1/settings/{scope}/{key}`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `scope` (string) — required
@@ -3972,7 +4147,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/settings/{scope}/{key}" \
+  "http://localhost:8001/api/v1/settings/{scope}/{key}" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -3981,7 +4156,7 @@ curl -X GET \
 **Put Setting**
 
 - **Method:** `PUT`
-- **URL:** `http://localhost:8000/api/v1/settings/{scope}/{key}`
+- **URL:** `http://localhost:8001/api/v1/settings/{scope}/{key}`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `scope` (string) — required
@@ -4013,7 +4188,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X PUT \
-  "http://localhost:8000/api/v1/settings/{scope}/{key}" \
+  "http://localhost:8001/api/v1/settings/{scope}/{key}" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -4034,7 +4209,7 @@ Workspace membership, invitations, and role management.
 **List Members**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/team/members`
+- **URL:** `http://localhost:8001/api/v1/team/members`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -4062,7 +4237,69 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/team/members" \
+  "http://localhost:8001/api/v1/team/members" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### `GET /api/v1/team/roles`
+
+**List Roles**
+
+- **Method:** `GET`
+- **URL:** `http://localhost:8001/api/v1/team/roles`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response Body** (`200`):
+```json
+[
+  {
+    "role": "member",
+    "permissions": [
+      "string"
+    ]
+  }
+]
+```
+
+**Example curl:**
+```bash
+curl -X GET \
+  "http://localhost:8001/api/v1/team/roles" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### `GET /api/v1/team/permissions`
+
+**List Permissions**
+
+- **Method:** `GET`
+- **URL:** `http://localhost:8001/api/v1/team/permissions`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response Body** (`200`):
+```json
+[
+  {
+    "code": "482913",
+    "description": "string"
+  }
+]
+```
+
+**Example curl:**
+```bash
+curl -X GET \
+  "http://localhost:8001/api/v1/team/permissions" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -4071,7 +4308,7 @@ curl -X GET \
 **Invite Member**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/team/invite`
+- **URL:** `http://localhost:8001/api/v1/team/invite`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -4104,7 +4341,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/team/invite" \
+  "http://localhost:8001/api/v1/team/invite" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -4118,7 +4355,7 @@ curl -X POST \
 **List Invitations**
 
 - **Method:** `GET`
-- **URL:** `http://localhost:8000/api/v1/team/invitations`
+- **URL:** `http://localhost:8001/api/v1/team/invitations`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 
 **Headers:**
@@ -4144,7 +4381,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X GET \
-  "http://localhost:8000/api/v1/team/invitations" \
+  "http://localhost:8001/api/v1/team/invitations" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -4153,7 +4390,7 @@ curl -X GET \
 **Resend Invitation**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/team/invitations/{invitation_id}/resend`
+- **URL:** `http://localhost:8001/api/v1/team/invitations/{invitation_id}/resend`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `invitation_id` (string) — required
@@ -4174,7 +4411,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/team/invitations/{invitation_id}/resend" \
+  "http://localhost:8001/api/v1/team/invitations/{invitation_id}/resend" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -4183,7 +4420,7 @@ curl -X POST \
 **Cancel Invitation**
 
 - **Method:** `DELETE`
-- **URL:** `http://localhost:8000/api/v1/team/invitations/{invitation_id}`
+- **URL:** `http://localhost:8001/api/v1/team/invitations/{invitation_id}`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `invitation_id` (string) — required
@@ -4204,7 +4441,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X DELETE \
-  "http://localhost:8000/api/v1/team/invitations/{invitation_id}" \
+  "http://localhost:8001/api/v1/team/invitations/{invitation_id}" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -4213,7 +4450,7 @@ curl -X DELETE \
 **Update Member Role**
 
 - **Method:** `PATCH`
-- **URL:** `http://localhost:8000/api/v1/team/members/{member_user_id}/role`
+- **URL:** `http://localhost:8001/api/v1/team/members/{member_user_id}/role`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `member_user_id` (string) — required
@@ -4242,7 +4479,7 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X PATCH \
-  "http://localhost:8000/api/v1/team/members/{member_user_id}/role" \
+  "http://localhost:8001/api/v1/team/members/{member_user_id}/role" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -4255,7 +4492,7 @@ curl -X PATCH \
 **Remove Member**
 
 - **Method:** `DELETE`
-- **URL:** `http://localhost:8000/api/v1/team/members/{member_user_id}`
+- **URL:** `http://localhost:8001/api/v1/team/members/{member_user_id}`
 - **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
 - **Path parameters:**
   - `member_user_id` (string) — required
@@ -4276,7 +4513,7 @@ Authorization: Bearer <access_token>
 **Example curl:**
 ```bash
 curl -X DELETE \
-  "http://localhost:8000/api/v1/team/members/{member_user_id}" \
+  "http://localhost:8001/api/v1/team/members/{member_user_id}" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -4285,7 +4522,7 @@ curl -X DELETE \
 **Accept Invitation**
 
 - **Method:** `POST`
-- **URL:** `http://localhost:8000/api/v1/team/invitations/accept`
+- **URL:** `http://localhost:8001/api/v1/team/invitations/accept`
 - **Authentication:** None — public endpoint.
 
 **Headers:**
@@ -4311,9 +4548,327 @@ Content-Type: application/json
 **Example curl:**
 ```bash
 curl -X POST \
-  "http://localhost:8000/api/v1/team/invitations/accept" \
+  "http://localhost:8001/api/v1/team/invitations/accept" \
   -H "Content-Type: application/json" \
   -d '{
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 }'
+```
+
+---
+
+## Exports
+
+Export Center — generate CSV/Excel/PDF/JSON exports of leads, search results, and reports, then download them via a signed URL.
+
+
+### `POST /api/v1/exports`
+
+**Create an export**
+
+- **Method:** `POST`
+- **URL:** `http://localhost:8001/api/v1/exports`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>`
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "resource": "leads",
+  "format": "csv",
+  "scope": "all",
+  "lead_ids": [
+    "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+  ],
+  "filters": {
+    "search": "string",
+    "industry": "Panel Builders",
+    "status": "string",
+    "country": "India",
+    "min_score": 0.0,
+    "max_score": 0.0,
+    "sort_by": "created_at",
+    "sort_order": "desc"
+  },
+  "search_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "columns": [
+    "string"
+  ],
+  "file_name": "string"
+}
+```
+
+**Response Body** (`201`):
+```json
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "file_name": "string",
+  "format": "csv",
+  "resource": "leads",
+  "row_count": 1,
+  "size_bytes": 1,
+  "size_label": "Manual backup",
+  "status": "processing",
+  "download_count": 1,
+  "created_at": "2026-07-30T09:00:00Z",
+  "expires_at": "2026-07-30T09:00:00Z",
+  "error_message": "string",
+  "download_url": "https://acmesupplies.com",
+  "ignored_columns": [
+    "string"
+  ]
+}
+```
+
+**Example curl:**
+```bash
+curl -X POST \
+  "http://localhost:8001/api/v1/exports" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "resource": "leads",
+  "format": "csv",
+  "scope": "all",
+  "lead_ids": [
+    "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+  ],
+  "filters": {
+    "search": "string",
+    "industry": "Panel Builders",
+    "status": "string",
+    "country": "India",
+    "min_score": 0.0,
+    "max_score": 0.0,
+    "sort_by": "created_at",
+    "sort_order": "desc"
+  },
+  "search_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "columns": [
+    "string"
+  ],
+  "file_name": "string"
+}'
+```
+
+### `GET /api/v1/exports`
+
+**List export history**
+
+- **Method:** `GET`
+- **URL:** `http://localhost:8001/api/v1/exports`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>`
+- **Query parameters:**
+  - `resource` (string)
+  - `status` (string)
+  - `page` (integer, default: `1`)
+  - `page_size` (integer, default: `20`)
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response Body** (`200`):
+```json
+{
+  "items": [
+    {
+      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "file_name": "string",
+      "format": "csv",
+      "resource": "leads",
+      "row_count": 1,
+      "size_bytes": 1,
+      "size_label": "Manual backup",
+      "status": "processing",
+      "download_count": 1,
+      "created_at": "2026-07-30T09:00:00Z",
+      "expires_at": "2026-07-30T09:00:00Z",
+      "error_message": "string",
+      "download_url": "https://acmesupplies.com",
+      "ignored_columns": [
+        "string"
+      ]
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "page_size": 1,
+    "total_items": 1,
+    "total_pages": 1,
+    "has_next": true,
+    "has_previous": true
+  }
+}
+```
+
+**Example curl:**
+```bash
+curl -X GET \
+  "http://localhost:8001/api/v1/exports" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### `GET /api/v1/exports/formats`
+
+**List supported export formats and lead columns**
+
+- **Method:** `GET`
+- **URL:** `http://localhost:8001/api/v1/exports/formats`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>`
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response Body** (`200`):
+```json
+{}
+```
+
+**Example curl:**
+```bash
+curl -X GET \
+  "http://localhost:8001/api/v1/exports/formats" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### `GET /api/v1/exports/{export_id}`
+
+**Get one export's status**
+
+- **Method:** `GET`
+- **URL:** `http://localhost:8001/api/v1/exports/{export_id}`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>`
+- **Path parameters:**
+  - `export_id` (string) — required
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response Body** (`200`):
+```json
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "file_name": "string",
+  "format": "csv",
+  "resource": "leads",
+  "row_count": 1,
+  "size_bytes": 1,
+  "size_label": "Manual backup",
+  "status": "processing",
+  "download_count": 1,
+  "created_at": "2026-07-30T09:00:00Z",
+  "expires_at": "2026-07-30T09:00:00Z",
+  "error_message": "string",
+  "download_url": "https://acmesupplies.com",
+  "ignored_columns": [
+    "string"
+  ]
+}
+```
+
+**Example curl:**
+```bash
+curl -X GET \
+  "http://localhost:8001/api/v1/exports/{export_id}" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### `DELETE /api/v1/exports/{export_id}`
+
+**Delete an export and its file**
+
+- **Method:** `DELETE`
+- **URL:** `http://localhost:8001/api/v1/exports/{export_id}`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>`
+- **Path parameters:**
+  - `export_id` (string) — required
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response Body** (`200`):
+```json
+{
+  "success": true,
+  "message": "string"
+}
+```
+
+**Example curl:**
+```bash
+curl -X DELETE \
+  "http://localhost:8001/api/v1/exports/{export_id}" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### `POST /api/v1/exports/{export_id}/download-token`
+
+**Mint a short-lived download token**
+
+- **Method:** `POST`
+- **URL:** `http://localhost:8001/api/v1/exports/{export_id}/download-token`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>`
+- **Path parameters:**
+  - `export_id` (string) — required
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response Body** (`200`):
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expires_in": 1,
+  "download_url": "https://acmesupplies.com"
+}
+```
+
+**Example curl:**
+```bash
+curl -X POST \
+  "http://localhost:8001/api/v1/exports/{export_id}/download-token" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### `GET /api/v1/exports/{export_id}/download`
+
+**Download an export file**
+
+- **Method:** `GET`
+- **URL:** `http://localhost:8001/api/v1/exports/{export_id}/download`
+- **Authentication:** None — public endpoint.
+- **Path parameters:**
+  - `export_id` (string) — required
+- **Query parameters:**
+  - `token` (string)
+
+**Headers:**
+```
+(none required)
+```
+
+**Response Body** (`200`):
+```json
+{}
+```
+
+**Example curl:**
+```bash
+curl -X GET \
+  "http://localhost:8001/api/v1/exports/{export_id}/download"
 ```

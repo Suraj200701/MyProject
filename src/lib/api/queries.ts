@@ -50,6 +50,7 @@ import type {
   ExportStatusApi,
   LeadCreateBody,
   LeadUpdateBody,
+  ProviderCredentialUpdateBody,
   RoleNameApi,
 } from "@/lib/api/types";
 
@@ -287,6 +288,39 @@ export function useProviders() {
     queryKey: queryKeys.providers,
     queryFn: async () => toApiProviders(await searchApi.providers()),
     ...STATIC_DATA,
+  });
+}
+
+/**
+ * Credential *status* for every provider — never the credential values, which
+ * the backend refuses to return. Gated on `api_keys.manage`, so this 403s for
+ * roles that cannot manage providers; callers should treat that as "hide the
+ * form" rather than as an error.
+ */
+export function useProviderCredentials(enabled = true) {
+  return useQuery({
+    queryKey: [...queryKeys.providers, "credentials"],
+    queryFn: searchApi.providerCredentials,
+    enabled,
+    retry: false,
+  });
+}
+
+export function useSetProviderCredentials() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ providerId, ...body }: { providerId: string } & ProviderCredentialUpdateBody) =>
+      searchApi.setProviderCredentials(providerId, body),
+    // `connected` on the provider row changes too, so refresh the whole domain.
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.providers }),
+  });
+}
+
+export function useClearProviderCredentials() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (providerId: string) => searchApi.clearProviderCredentials(providerId),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.providers }),
   });
 }
 

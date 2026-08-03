@@ -33,6 +33,11 @@ class ApiProvider(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     connected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Encrypted at rest via utils/crypto.py — never store plaintext here.
     api_key_encrypted: Mapped[str | None] = mapped_column(Text)
+    # Second credential, for providers that authenticate with a pair rather than
+    # a single key — Mappls exchanges a client id *and* secret for an OAuth
+    # token. Kept as its own column rather than packing JSON into the field
+    # above, so each value stays independently readable and rotatable.
+    api_secret_encrypted: Mapped[str | None] = mapped_column(Text)
     # Credits charged per result sourced from this provider. Lets an expensive
     # provider cost more than a cheap one without a redeploy. Falls back to
     # settings.DEFAULT_SEARCH_CREDIT_COST_PER_RESULT when NULL.

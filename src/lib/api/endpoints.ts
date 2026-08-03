@@ -9,6 +9,8 @@
 
 import { apiFetch, apiFetchBlob, absoluteUrl } from "@/lib/api/client";
 import type {
+  ProviderCredentialUpdateBody,
+  ProviderCredentialStatusOut,
   PermissionOut,
   RolePermissionsOut,
   CreditPackOut,
@@ -209,6 +211,17 @@ export const searchApi = {
   history: (query: PaginationQuery = {}) => apiFetch<Page<SearchOut>>("/search/history", { query }),
 
   providers: () => apiFetch<ApiProviderOut[]>("/providers"),
+  providerCredentials: () =>
+    apiFetch<ProviderCredentialStatusOut[]>("/providers/credentials"),
+  setProviderCredentials: (providerId: string, body: ProviderCredentialUpdateBody) =>
+    apiFetch<ProviderCredentialStatusOut>(`/providers/${providerId}/credentials`, {
+      method: "PUT",
+      body,
+    }),
+  clearProviderCredentials: (providerId: string) =>
+    apiFetch<ProviderCredentialStatusOut>(`/providers/${providerId}/credentials`, {
+      method: "DELETE",
+    }),
 
   scanWebsite: (url: string) =>
     apiFetch<WebsiteScanOut>("/scan-website", { method: "POST", body: { url } }),
