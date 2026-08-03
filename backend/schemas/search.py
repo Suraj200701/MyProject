@@ -119,3 +119,20 @@ class ProviderCredentialUpdate(BaseModel):
 
     api_key: str | None = Field(default=None, min_length=1, max_length=1000)
     api_secret: str | None = Field(default=None, min_length=1, max_length=1000)
+
+
+class ProviderTestResult(BaseModel):
+    """Outcome of a real connectivity/authentication test.
+
+    Returned with HTTP 200 even when `success` is false: the API call worked, it
+    is the *provider* that rejected us, and a non-2xx here could not be told
+    apart from this endpoint being broken. `details` carries the provider's
+    status code, error body and exception; the traceback stays in the server log.
+    """
+
+    provider: str
+    success: bool
+    authenticated: bool
+    message: str
+    latency_ms: int
+    details: dict = Field(default_factory=dict)

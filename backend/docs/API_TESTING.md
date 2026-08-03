@@ -1,6 +1,6 @@
 # LeadMaster AI — API Testing Guide
 
-Auto-generated from the FastAPI app's own OpenAPI schema — every example below reflects the actual request/response models in the code, not hand-written guesses. 115 endpoints across 14 modules.
+Auto-generated from the FastAPI app's own OpenAPI schema — every example below reflects the actual request/response models in the code, not hand-written guesses. 117 endpoints across 14 modules.
 
 ## Base URL
 
@@ -23,7 +23,7 @@ Endpoints tagged **org-scoped** additionally resolve the caller's active organiz
 - [Health](#health) — 2 endpoint(s)
 - [Auth](#auth) — 16 endpoint(s)
 - [Leads](#leads) — 10 endpoint(s)
-- [Search](#search) — 8 endpoint(s)
+- [Search](#search) — 10 endpoint(s)
 - [Dashboard](#dashboard) — 7 endpoint(s)
 - [Analytics](#analytics) — 5 endpoint(s)
 - [Billing](#billing) — 11 endpoint(s)
@@ -1626,6 +1626,74 @@ Authorization: Bearer <access_token>
 ```bash
 curl -X DELETE \
   "http://localhost:8001/api/v1/providers/{provider_id}/credentials" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### `POST /api/v1/providers/{provider_id}/test`
+
+**Test Provider Connection**
+
+- **Method:** `POST`
+- **URL:** `http://localhost:8001/api/v1/providers/{provider_id}/test`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
+- **Path parameters:**
+  - `provider_id` (string) — required
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response Body** (`200`):
+```json
+{
+  "provider": "string",
+  "success": true,
+  "authenticated": true,
+  "message": "string",
+  "latency_ms": 1,
+  "details": {}
+}
+```
+
+**Example curl:**
+```bash
+curl -X POST \
+  "http://localhost:8001/api/v1/providers/{provider_id}/test" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### `POST /api/v1/providers/system-checks`
+
+**System Dependency Checks**
+
+- **Method:** `POST`
+- **URL:** `http://localhost:8001/api/v1/providers/system-checks`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response Body** (`200`):
+```json
+[
+  {
+    "provider": "string",
+    "success": true,
+    "authenticated": true,
+    "message": "string",
+    "latency_ms": 1,
+    "details": {}
+  }
+]
+```
+
+**Example curl:**
+```bash
+curl -X POST \
+  "http://localhost:8001/api/v1/providers/system-checks" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 

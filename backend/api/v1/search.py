@@ -1,27 +1,33 @@
 """Lead search, provider catalogue, and website scanner endpoints."""
 
+import asyncio
 import uuid
 
 from fastapi import APIRouter, Depends
+from fastapi.concurrency import run_in_threadpool
+from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_current_organization, get_current_user, require_permission
 from database.session import get_db
+from models.enums import ProviderStatus
 from models.organization import Organization
 from models.search import ApiProvider, Search, WebsiteScan
 from models.user import User
-from schemas.common import MessageResponse
+from redis_cache.client import get_redis
 from schemas.search import (
     ApiProviderOut,
     ProviderCredentialStatusOut,
     ProviderCredentialUpdate,
+    ProviderTestResult,
     SearchCreate,
     SearchOut,
     WebsiteScanCreate,
     WebsiteScanOut,
 )
-from services import provider_service, search_service, usage_service
+from services import provider_service, provider_test_service, search_service, usage_service
+from utils.exceptions import NotFoundError
 from utils.pagination import Page, PaginationParams, paginate, pagination_params
 
 router = APIRouter(tags=["Search"])
@@ -161,6 +167,72 @@ async def clear_provider_credentials(
     status = await provider_service.clear_credentials(db, provider_id)
     await db.commit()
     return _to_credential_status(status)
+
+
+@router.post("/providers/{provider_id}/test", response_model=ProviderTestResult)
+async def test_provider_connection(
+    provider_id: uuid.UUID,
+    _membership=Depends(require_permission("api_keys.manage")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Performs a REAL authentication test against the provider.
+
+    Credentials are resolved exactly as a production search resolves them
+    (stored row credentials first, platform `.env` values second), so a passing
+    test guarantees a search will authenticate. Nothing is simulated: Mappls
+    exchanges an OAuth token, Google Places and Bing issue one-result queries,
+    OpenAI lists models.
+
+    Always HTTP 200. `success=false` means the provider rejected us — see
+    `details` for its status code, error body and the exception; the traceback
+    is in the server log.
+    """
+    provider = (
+        await db.execute(select(ApiProvider).where(ApiProvider.id == provider_id))
+    ).scalar_one_or_none()
+    if provider is None:
+        raise NotFoundError("Provider not found")
+
+    outcome = await provider_test_service.test_provider(provider)
+
+    # Record what the probe learned: `latency_ms` powers the API Manager's
+    # latency column, and a provider that just failed authentication should not
+    # keep claiming to be healthy.
+    if outcome.latency_ms:
+        provider.latency_ms = outcome.latency_ms
+    if outcome.success:
+        provider.status = ProviderStatus.HEALTHY
+    elif provider.status is ProviderStatus.HEALTHY:
+        provider.status = ProviderStatus.DEGRADED
+    await db.commit()
+
+    return ProviderTestResult(**vars(outcome))
+
+
+@router.post("/providers/system-checks", response_model=list[ProviderTestResult])
+async def system_dependency_checks(
+    _membership=Depends(require_permission("api_keys.manage")),
+    db: AsyncSession = Depends(get_db),
+    cache: Redis = Depends(get_redis),
+):
+    """Real checks against the infrastructure the app depends on.
+
+    SMTP, Stripe, Redis and Postgres have no `ApiProvider` row — they are not
+    lead sources — so they are tested here rather than through
+    `/providers/{id}/test`. Inventing catalogue rows for them would have put
+    non-provider cards in the API Manager grid.
+
+    `smtplib` and the Stripe SDK are synchronous, so they run in a worker thread
+    to keep the event loop free.
+    """
+    smtp, stripe_result = await asyncio.gather(
+        run_in_threadpool(provider_test_service.test_smtp_sync),
+        run_in_threadpool(provider_test_service.test_stripe_sync),
+    )
+    redis_result = await provider_test_service.test_redis(cache)
+    postgres = await provider_test_service.test_postgres(db)
+
+    return [ProviderTestResult(**vars(o)) for o in (postgres, redis_result, smtp, stripe_result)]
 
 
 @router.post("/scan-website", response_model=WebsiteScanOut, status_code=201)

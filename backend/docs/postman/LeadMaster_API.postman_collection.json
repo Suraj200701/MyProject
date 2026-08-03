@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "a934bc6e-bd2e-40ec-b6cd-c083a9cb2c84",
+    "_postman_id": "6c3d6088-d756-4c47-a1e0-11070e5e69c0",
     "name": "LeadMaster AI API",
     "description": "Auto-generated from the live OpenAPI schema. Run 'Auth > Login' first \u2014 it saves {{access_token}}/{{refresh_token}} automatically via a test script.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -1097,6 +1097,47 @@
                 "providers",
                 "{provider_id}",
                 "credentials"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Test Provider Connection",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/providers/{provider_id}/test",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "providers",
+                "{provider_id}",
+                "test"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "System Dependency Checks",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/providers/system-checks",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "providers",
+                "system-checks"
               ]
             }
           },

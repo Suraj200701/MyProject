@@ -107,6 +107,20 @@ def _decrypt(ciphertext: str | None, provider_name: str, field: str) -> str | No
         return None
 
 
+def resolve_credentials(row: ApiProvider) -> tuple[str | None, str | None]:
+    """The `(key, secret)` this provider row authenticates with.
+
+    Exactly what `build_adapter` hands its factory, exposed separately so
+    connectivity testing can authenticate with the same values a search would
+    without reaching into an adapter's private attributes. `None` means "fall
+    back to the platform value in settings", which each adapter does itself.
+    """
+    return (
+        _decrypt(row.api_key_encrypted, row.name, "API key"),
+        _decrypt(getattr(row, "api_secret_encrypted", None), row.name, "API secret"),
+    )
+
+
 def build_adapter(row: ApiProvider) -> LeadProvider | None:
     """Returns an adapter for this provider row, or None if it isn't a lead source."""
     factory = _ADAPTER_FACTORIES.get(row.name)

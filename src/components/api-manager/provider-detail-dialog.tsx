@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusPill } from "@/components/api-manager/status-pill";
 import { CredentialsForm } from "@/components/api-manager/credentials-form";
+import { ConnectionTest } from "@/components/api-manager/connection-test";
 import {
   isNearQuota,
   latencyLabel,
@@ -25,11 +26,12 @@ import {
  *
  * Three tabs were rebuilt because all three showed fabricated data:
  *
- *   * **Playground** — "Test Connection" waited 900ms and rendered a
+ *   * **Testing** — "Test Connection" waited 900ms and rendered a
  *     category-flavoured JSON blob with a hardcoded `200 OK` and made-up
- *     latency. No provider ever received a request. There is no
- *     test-connection endpoint, so the tab now explains how to verify a
- *     provider for real (run a search and read its provider runs).
+ *     latency. No provider ever received a request. It now calls
+ *     `POST /providers/{id}/test`, which performs a real authenticated
+ *     round-trip using the credentials a search would use, and reports the
+ *     measured latency plus the provider's own error body when it fails.
  *   * **Credentials** — displayed a plausible `sk_live_…` key and a
  *     "Regenerate key" button that only re-seeded the fake string. The tab now
  *     writes real credentials through `PUT /providers/{id}/credentials`, which
@@ -122,15 +124,7 @@ export function ProviderDetailDialog({
           </TabsContent>
 
           <TabsContent value="testing">
-            <p className="text-xs text-muted-foreground">
-              There&apos;s no isolated test-connection endpoint. To verify this provider end to end,
-              run a search from Lead Search — the results panel lists every provider that was
-              queried, whether it succeeded, and how many leads it returned.
-            </p>
-            <p className="mt-3 text-xs text-muted-foreground">
-              A provider that is missing credentials is reported as skipped, with the reason, rather
-              than failing the search.
-            </p>
+            <ConnectionTest providerId={provider.id} />
           </TabsContent>
         </Tabs>
       </DialogContent>

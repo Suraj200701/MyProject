@@ -11,6 +11,7 @@ import { apiFetch, apiFetchBlob, absoluteUrl } from "@/lib/api/client";
 import type {
   ProviderCredentialUpdateBody,
   ProviderCredentialStatusOut,
+  ProviderTestResult,
   PermissionOut,
   RolePermissionsOut,
   CreditPackOut,
@@ -222,6 +223,15 @@ export const searchApi = {
     apiFetch<ProviderCredentialStatusOut>(`/providers/${providerId}/credentials`, {
       method: "DELETE",
     }),
+  /**
+   * Runs a real authentication test. Resolves (not rejects) on a failed test —
+   * the server answers 200 with `success: false`, because the request itself
+   * worked. Only a transport/permission problem throws.
+   */
+  testProvider: (providerId: string) =>
+    apiFetch<ProviderTestResult>(`/providers/${providerId}/test`, { method: "POST" }),
+  systemChecks: () =>
+    apiFetch<ProviderTestResult[]>("/providers/system-checks", { method: "POST" }),
 
   scanWebsite: (url: string) =>
     apiFetch<WebsiteScanOut>("/scan-website", { method: "POST", body: { url } }),

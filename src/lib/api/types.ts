@@ -238,6 +238,23 @@ export interface ApiProviderOut {
   connected: boolean;
 }
 
+/**
+ * Result of a real authentication test against a provider.
+ *
+ * Arrives with HTTP 200 even when `success` is false — the request worked, the
+ * *provider* rejected us. Callers must branch on `success`, not on the status
+ * code. `details` is provider-specific diagnostics (status code, error body,
+ * exception) and is safe to render verbatim.
+ */
+export interface ProviderTestResult {
+  provider: string;
+  success: boolean;
+  authenticated: boolean;
+  message: string;
+  latency_ms: number;
+  details: Record<string, unknown>;
+}
+
 /** One credential input. `is_set` says whether a value is stored — never the value. */
 export interface ProviderCredentialFieldOut {
   label: string;

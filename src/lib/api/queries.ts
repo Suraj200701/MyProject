@@ -324,6 +324,27 @@ export function useClearProviderCredentials() {
   });
 }
 
+/**
+ * Runs a real authentication test against one provider.
+ *
+ * A failed *test* is a fulfilled mutation carrying `success: false` — only a
+ * transport or permission error rejects. So `onSuccess` fires either way, which
+ * is what we want: the server records the measured latency and may downgrade the
+ * provider's status on failure, and both belong in the refreshed provider list.
+ */
+export function useTestProvider() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (providerId: string) => searchApi.testProvider(providerId),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.providers }),
+  });
+}
+
+/** Real checks against SMTP, Stripe, Redis and Postgres. */
+export function useSystemChecks() {
+  return useMutation({ mutationFn: searchApi.systemChecks });
+}
+
 export function useScans(query: PaginationQuery = {}) {
   return useQuery({
     queryKey: [...queryKeys.scans, query],
