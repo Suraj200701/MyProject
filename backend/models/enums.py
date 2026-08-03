@@ -133,3 +133,24 @@ class SettingScope(str, enum.Enum):
     USER = "user"
     ORGANIZATION = "organization"
     GLOBAL = "global"
+
+
+class ImportSource(str, enum.Enum):
+    """Where an import's rows came from.
+
+    Recorded because the workflow differs: a Google Maps Extractor file arrives
+    with a keyword/location the user searched for, and the history view shows
+    that context so a run can be recognised weeks later.
+    """
+
+    CSV_UPLOAD = "csv_upload"
+    GOOGLE_MAPS_EXTRACTOR = "google_maps_extractor"
+
+
+class ImportStatus(str, enum.Enum):
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    # Parsed, but every row was rejected or duplicated — worth distinguishing
+    # from success so the user investigates their file instead of their filters.
+    COMPLETED_EMPTY = "completed_empty"
+    FAILED = "failed"

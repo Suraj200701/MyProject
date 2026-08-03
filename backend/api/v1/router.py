@@ -10,6 +10,7 @@ from api.v1 import (
     exports,
     files,
     health,
+    imports,
     leads,
     map as map_routes,
     notifications,
@@ -28,6 +29,7 @@ api_router.include_router(dashboard.router)
 api_router.include_router(analytics.router)
 api_router.include_router(payments.router)
 api_router.include_router(exports.router)
+api_router.include_router(imports.router)
 api_router.include_router(files.router)
 api_router.include_router(notifications.router)
 api_router.include_router(map_routes.router)

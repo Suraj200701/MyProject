@@ -238,6 +238,42 @@ export interface ApiProviderOut {
   connected: boolean;
 }
 
+export type ImportSource = "csv_upload" | "google_maps_extractor";
+export type ImportStatus = "processing" | "completed" | "completed_empty" | "failed";
+
+export interface ImportRowErrorOut {
+  line: number;
+  message: string;
+  company: string | null;
+}
+
+/** One import run. `completed_empty` = parsed fine, but nothing new landed. */
+export interface LeadImportOut {
+  id: string;
+  source: ImportSource;
+  status: ImportStatus;
+  file_name: string | null;
+  file_size_bytes: number | null;
+  keyword: string | null;
+  location: string | null;
+  total_rows: number;
+  imported: number;
+  duplicates_skipped: number;
+  invalid_rows: number;
+  enriched: number;
+  row_errors: ImportRowErrorOut[] | null;
+  dedup_signals: Record<string, number> | null;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface MapsSearchUrlOut {
+  url: string;
+  keyword: string;
+  location: string | null;
+}
+
 /**
  * Result of a real authentication test against a provider.
  *

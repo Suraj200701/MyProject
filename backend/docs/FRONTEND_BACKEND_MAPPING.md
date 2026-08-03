@@ -347,3 +347,18 @@ Still open:
 4. Set real environment values (`GOOGLE_MAPS_API_KEY`, `STRIPE_*`) before
    migrating the Map and Billing pages specifically, or those pages will
    correctly show configuration-error states from the backend.
+
+## Google Maps Search (`/dashboard/google-maps`)
+
+LeadMaster does **not** scrape Google Maps. It builds a `google.com/maps/search/...`
+link, opens it (new tab on the web, embedded window if a desktop shell is present),
+and imports the CSV the user's own extractor extension exported.
+
+| Frontend | Backend | Notes |
+| --- | --- | --- |
+| Keyword + Location -> "Open Google Maps" | 🟢 `POST /imports/google-maps/search-url` | The URL is also built client-side (`src/lib/maps-search-url.ts`) so the preview needs no round-trip; the server's copy is what gets recorded on the history row. |
+| "Start Extraction" | — | Deliberately no backend call. No web page can drive another extension's UI, so this advances the workflow to the import step and states that plainly rather than faking automation. |
+| CSV drop zone / "Open Downloads" | — | `showOpenFilePicker({ startIn: "downloads" })` where supported (Chromium); drag-drop and a plain file input otherwise. True Downloads-folder *watching* needs the desktop shell — see `src/lib/desktop-bridge.ts`. |
+| "Import leads" | 🟢 `POST /imports/google-maps` | Multipart. Runs parse -> dedupe -> AI score -> optional website enrichment -> save. Returns the history row with counts and per-row errors. |
+| Import history table | 🟢 `GET /imports`, `GET /imports/{id}` | Newest first, filterable by source. Failed runs are recorded too. |
+| — | 🟢 `POST /imports` | Generic CSV import with history. The older `POST /leads/import` still works but records no history. |

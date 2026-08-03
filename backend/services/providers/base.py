@@ -50,6 +50,10 @@ class NormalizedLead:
     revenue_band: str | None = None
     website: str | None = None
     gst_number: str | None = None
+    # Full street address as the source gave it. Local-business sources lead
+    # with this and often have no separate city field, so `city` is derived from
+    # it when absent rather than left null (dedup and filtering key off `city`).
+    address: str | None = None
     city: str | None = None
     country: str | None = None
     lat: float | None = None
@@ -68,6 +72,8 @@ class NormalizedLead:
         self.company_name = (self.company_name or "").strip()[:255]
         if self.website:
             self.website = self.website.strip()[:255]
+        if self.address:
+            self.address = self.address.strip()[:500]
         if self.city:
             self.city = self.city.strip()[:150]
         if self.country:

@@ -14,6 +14,7 @@ from models.billing import (
 )
 from models.document import Document
 from models.lead import Company, Lead, LeadActivity, LeadNote
+from models.lead_import import LeadImport
 from models.notification import Notification, NotificationPreference, PushSubscription
 from models.organization import Organization, OrganizationMember, TeamInvitation
 from models.otp import AuthTokenLog, OtpRequest
@@ -45,6 +46,7 @@ __all__ = [
     "TeamInvitation",
     "Company",
     "Lead",
+    "LeadImport",
     "LeadNote",
     "LeadActivity",
     "ApiProvider",

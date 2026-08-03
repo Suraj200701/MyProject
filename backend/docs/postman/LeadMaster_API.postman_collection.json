@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "6c3d6088-d756-4c47-a1e0-11070e5e69c0",
+    "_postman_id": "31088721-46cb-4aa9-83b1-4a154720997c",
     "name": "LeadMaster AI API",
     "description": "Auto-generated from the live OpenAPI schema. Run 'Auth > Login' first \u2014 it saves {{access_token}}/{{refresh_token}} automatically via a test script.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -3392,6 +3392,187 @@
             },
             "auth": {
               "type": "noauth"
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Imports",
+      "item": [
+        {
+          "name": "Google Maps Search Url",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/imports/google-maps/search-url",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "imports",
+                "google-maps",
+                "search-url"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyword\": \"theme\",\n  \"location\": \"Pune, India\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Import Google Maps Export",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/imports/google-maps",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "imports",
+                "google-maps"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "value": "",
+                  "disabled": false
+                },
+                {
+                  "key": "keyword",
+                  "type": "text",
+                  "value": "theme",
+                  "disabled": true
+                },
+                {
+                  "key": "location",
+                  "type": "text",
+                  "value": "Pune, India",
+                  "disabled": true
+                },
+                {
+                  "key": "enrich",
+                  "type": "text",
+                  "value": "False",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Import Csv",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/imports",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "imports"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "value": "",
+                  "disabled": false
+                },
+                {
+                  "key": "enrich",
+                  "type": "text",
+                  "value": "False",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Imports",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/imports",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "imports"
+              ],
+              "query": [
+                {
+                  "key": "source",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page_size",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Import",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/imports/{import_id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "imports",
+                "{import_id}"
+              ]
             }
           },
           "response": []

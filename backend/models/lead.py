@@ -20,6 +20,12 @@ class Company(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     revenue_band: Mapped[str | None] = mapped_column(String(50))
     website: Mapped[str | None] = mapped_column(String(255))
     gst_number: Mapped[str | None] = mapped_column(String(32))
+    # Full street address as the source reported it. Local-business sources
+    # (Google Maps exports, Mappls POIs) lead with a formatted address and often
+    # nothing else location-wise, so dropping it loses the most useful field
+    # they provide. `city` stays separate because it is what dedup and filtering
+    # match on.
+    address: Mapped[str | None] = mapped_column(String(500))
     city: Mapped[str | None] = mapped_column(String(150), index=True)
     country: Mapped[str | None] = mapped_column(String(150), index=True)
     lat: Mapped[float | None] = mapped_column(Numeric(9, 6))

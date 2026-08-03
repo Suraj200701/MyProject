@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config.settings import settings
 from models.lead import Lead
 from services.enrichment import dedup, extractors, scoring
+from services.enrichment.address import parse_address
 from services.providers.base import NormalizedLead
 from utils.exceptions import BadRequestError
 
@@ -73,6 +74,46 @@ _HEADER_ALIASES: dict[str, str] = {
     "town": "city",
     "location": "city",
     "country": "country",
+    # --- Google Maps Extractor exports ---
+    # These files lead with a formatted address and a category, and usually have
+    # no separate city column at all; `city` is derived from the address below.
+    "address": "address",
+    "fulladdress": "address",
+    "streetaddress": "address",
+    "formattedaddress": "address",
+    "completeaddress": "address",
+    "category": "industry",
+    "categories": "industry",
+    "maincategory": "industry",
+    "primarycategory": "industry",
+    "businesscategory": "industry",
+    # Extractors number their columns when a place has several.
+    "phone1": "phone",
+    "phonenumber1": "phone",
+    "email1": "email",
+    "reviewsaverage": "rating",
+    "averagerating": "rating",
+    "starrating": "rating",
+    "googlemapsurl": "maps_url",
+    "googleurl": "maps_url",
+    "mapsurl": "maps_url",
+    "maplink": "maps_url",
+    "placeurl": "maps_url",
+    "state": "state",
+    "province": "state",
+    "postalcode": "postal_code",
+    "postcode": "postal_code",
+    "zip": "postal_code",
+    "zipcode": "postal_code",
+    "pincode": "postal_code",
+    "reviews": "review_count",
+    "reviewcount": "review_count",
+    "reviewscount": "review_count",
+    "totalreviews": "review_count",
+    "numberofreviews": "review_count",
+    "placeid": "place_id",
+    "businessstatus": "business_status",
+    "pluscode": "plus_code",
     "contact": "contact_name",
     "contactname": "contact_name",
     "contactperson": "contact_name",
@@ -114,6 +155,16 @@ class ImportResult:
     errors: list[RowError] = field(default_factory=list)
     dedup_signals: dict[str, int] = field(default_factory=dict)
     lead_ids: list[uuid.UUID] = field(default_factory=list)
+
+
+# Hosts that serve map listings rather than a business's own website.
+_MAPS_URL_HOSTS = ("google.com/maps", "google.co", "goo.gl/maps", "maps.app.goo.gl", "g.page")
+
+
+def _is_maps_url(value: str) -> bool:
+    """True for a link to a map listing rather than the company's own site."""
+    lowered = value.strip().lower()
+    return any(host in lowered for host in _MAPS_URL_HOSTS)
 
 
 def _canonical_header(raw: str) -> str | None:
@@ -235,16 +286,45 @@ def parse_csv(content: bytes) -> tuple[list[NormalizedLead], list[RowError], int
         tags_raw = values.get("tags") or ""
         tags = [t.strip() for t in tags_raw.replace("|", ",").split(",") if t.strip()]
 
+        address = values.get("address")
+        parsed_address = parse_address(address)
+
+        # A Google Maps export's "URL"/"Link" column is a maps.google.com link to
+        # the listing, not the business's own site. Letting it through as
+        # `website` would give every row in the file the same domain, and dedup
+        # matches on domain — the whole import would collapse into one company.
+        website = values.get("website")
+        if website and _is_maps_url(website):
+            values["maps_url"] = values.get("maps_url") or website
+            website = None
+
+        raw: dict = {"source_row": line_number}
+        # Fields with no column on NormalizedLead/Company. Kept verbatim rather
+        # than dropped: review counts and business status are real quality
+        # signals, and re-importing to recover them is not something a user
+        # should have to do.
+        for extra in ("maps_url", "state", "postal_code", "review_count", "place_id",
+                      "business_status", "plus_code"):
+            if values.get(extra):
+                raw[extra] = values[extra]
+        if parsed_address.state and "state" not in raw:
+            raw["state"] = parsed_address.state
+        if parsed_address.postal_code and "postal_code" not in raw:
+            raw["postal_code"] = parsed_address.postal_code
+
         leads.append(
             NormalizedLead(
                 company_name=company_name,
                 industry=values.get("industry"),
                 company_type=values.get("company_type"),
                 revenue_band=values.get("revenue_band"),
-                website=values.get("website"),
+                website=website,
                 gst_number=gstin,
-                city=values.get("city"),
-                country=values.get("country"),
+                address=address,
+                # Maps exports have no city column; derive it from the address so
+                # the lead is still findable by city filters and matchable by dedup.
+                city=values.get("city") or parsed_address.city,
+                country=values.get("country") or parsed_address.country,
                 lat=_as_float(values.get("lat")),
                 lng=_as_float(values.get("lng")),
                 rating=_as_float(values.get("rating")),
@@ -252,7 +332,7 @@ def parse_csv(content: bytes) -> tuple[list[NormalizedLead], list[RowError], int
                 email=email,
                 phone=phone,
                 tags=tags,
-                raw={"source_row": line_number},
+                raw=raw,
                 source_provider=CSV_SOURCE,
             )
         )

@@ -29,6 +29,7 @@ import {
   leadsApi,
   mapApi,
   notificationsApi,
+  importsApi,
   searchApi,
   settingsApi,
   teamApi,
@@ -50,6 +51,7 @@ import type {
   ExportStatusApi,
   LeadCreateBody,
   LeadUpdateBody,
+  ImportSource,
   ProviderCredentialUpdateBody,
   RoleNameApi,
 } from "@/lib/api/types";
@@ -69,6 +71,7 @@ export const queryKeys = {
   settings: ["settings"] as const,
   team: ["team"] as const,
   map: ["map"] as const,
+  imports: ["imports"] as const,
 };
 
 /**
@@ -343,6 +346,42 @@ export function useTestProvider() {
 /** Real checks against SMTP, Stripe, Redis and Postgres. */
 export function useSystemChecks() {
   return useMutation({ mutationFn: searchApi.systemChecks });
+}
+
+/** Import history, newest first. Optionally filtered to one source. */
+export function useImportHistory(query: PaginationQuery & { source?: ImportSource } = {}) {
+  return useQuery({
+    queryKey: [...queryKeys.imports, query],
+    queryFn: () => importsApi.history(query),
+  });
+}
+
+/**
+ * Uploads a Google Maps extractor CSV and runs the import pipeline.
+ *
+ * Invalidates leads and the dashboard as well as history: an import that adds
+ * hundreds of leads makes every count on screen stale, and leaving them showing
+ * pre-import numbers reads as the import having done nothing.
+ */
+export function useImportGoogleMapsCsv() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: importsApi.importGoogleMaps,
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: queryKeys.imports });
+      client.invalidateQueries({ queryKey: queryKeys.leads });
+      client.invalidateQueries({ queryKey: queryKeys.dashboard });
+      client.invalidateQueries({ queryKey: queryKeys.analytics });
+    },
+  });
+}
+
+/** Asks the backend for the Google Maps URL to open. Never fetches Maps itself. */
+export function useMapsSearchUrl() {
+  return useMutation({
+    mutationFn: ({ keyword, location }: { keyword: string; location?: string }) =>
+      importsApi.mapsSearchUrl(keyword, location),
+  });
 }
 
 export function useScans(query: PaginationQuery = {}) {

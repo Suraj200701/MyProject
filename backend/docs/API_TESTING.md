@@ -1,6 +1,6 @@
 # LeadMaster AI — API Testing Guide
 
-Auto-generated from the FastAPI app's own OpenAPI schema — every example below reflects the actual request/response models in the code, not hand-written guesses. 117 endpoints across 14 modules.
+Auto-generated from the FastAPI app's own OpenAPI schema — every example below reflects the actual request/response models in the code, not hand-written guesses. 122 endpoints across 15 modules.
 
 ## Base URL
 
@@ -34,6 +34,7 @@ Endpoints tagged **org-scoped** additionally resolve the caller's active organiz
 - [Settings](#settings) — 11 endpoint(s)
 - [Team](#team) — 10 endpoint(s)
 - [Exports](#exports) — 7 endpoint(s)
+- [Imports](#imports) — 5 endpoint(s)
 
 
 ---
@@ -4939,4 +4940,292 @@ curl -X POST \
 ```bash
 curl -X GET \
   "http://localhost:8001/api/v1/exports/{export_id}/download"
+```
+
+---
+
+## Imports
+
+Lead imports — the Google Maps Search workflow (build a Maps URL, then import the CSV the user's own extractor extension exported) plus generic CSV import, with per-run history. Nothing here contacts Google Maps.
+
+
+### `POST /api/v1/imports/google-maps/search-url`
+
+**Google Maps Search Url**
+
+- **Method:** `POST`
+- **URL:** `http://localhost:8001/api/v1/imports/google-maps/search-url`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>`
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "keyword": "theme",
+  "location": "Pune, India"
+}
+```
+
+**Response Body** (`200`):
+```json
+{
+  "url": "https://acmesupplies.com",
+  "keyword": "theme",
+  "location": "Pune, India"
+}
+```
+
+**Example curl:**
+```bash
+curl -X POST \
+  "http://localhost:8001/api/v1/imports/google-maps/search-url" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "keyword": "theme",
+  "location": "Pune, India"
+}'
+```
+
+### `POST /api/v1/imports/google-maps`
+
+**Import Google Maps Export**
+
+- **Method:** `POST`
+- **URL:** `http://localhost:8001/api/v1/imports/google-maps`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>`
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+```
+
+**Request Body** (`multipart/form-data`):
+
+| Field | Value | Required |
+|---|---|---|
+| `file` | file upload — @/path/to/file.pdf | yes |
+| `keyword` | theme | no |
+| `location` | Pune, India | no |
+| `enrich` | False | no |
+
+**Response Body** (`201`):
+```json
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "source": "csv_upload",
+  "status": "processing",
+  "file_name": "string",
+  "file_size_bytes": 1,
+  "keyword": "theme",
+  "location": "Pune, India",
+  "total_rows": 1,
+  "imported": 1,
+  "duplicates_skipped": 1,
+  "invalid_rows": 1,
+  "enriched": 1,
+  "row_errors": [
+    {
+      "line": 1,
+      "message": "string",
+      "company": "Acme Switchgear"
+    }
+  ],
+  "dedup_signals": {},
+  "error_message": "string",
+  "created_at": "2026-07-30T09:00:00Z",
+  "completed_at": "2026-07-30T09:00:00Z"
+}
+```
+
+**Example curl:**
+```bash
+curl -X POST \
+  "http://localhost:8001/api/v1/imports/google-maps" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "file=@/path/to/file.pdf" \
+  -F "keyword=theme" \
+  -F "location=Pune, India" \
+  -F "enrich=False"
+```
+
+### `POST /api/v1/imports`
+
+**Import Csv**
+
+- **Method:** `POST`
+- **URL:** `http://localhost:8001/api/v1/imports`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>`
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+```
+
+**Request Body** (`multipart/form-data`):
+
+| Field | Value | Required |
+|---|---|---|
+| `file` | file upload — @/path/to/file.pdf | yes |
+| `enrich` | False | no |
+
+**Response Body** (`201`):
+```json
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "source": "csv_upload",
+  "status": "processing",
+  "file_name": "string",
+  "file_size_bytes": 1,
+  "keyword": "theme",
+  "location": "Pune, India",
+  "total_rows": 1,
+  "imported": 1,
+  "duplicates_skipped": 1,
+  "invalid_rows": 1,
+  "enriched": 1,
+  "row_errors": [
+    {
+      "line": 1,
+      "message": "string",
+      "company": "Acme Switchgear"
+    }
+  ],
+  "dedup_signals": {},
+  "error_message": "string",
+  "created_at": "2026-07-30T09:00:00Z",
+  "completed_at": "2026-07-30T09:00:00Z"
+}
+```
+
+**Example curl:**
+```bash
+curl -X POST \
+  "http://localhost:8001/api/v1/imports" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "file=@/path/to/file.pdf" \
+  -F "enrich=False"
+```
+
+### `GET /api/v1/imports`
+
+**List Imports**
+
+- **Method:** `GET`
+- **URL:** `http://localhost:8001/api/v1/imports`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>`
+- **Query parameters:**
+  - `source` (string)
+  - `page` (integer, default: `1`)
+  - `page_size` (integer, default: `20`)
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response Body** (`200`):
+```json
+{
+  "items": [
+    {
+      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "source": "csv_upload",
+      "status": "processing",
+      "file_name": "string",
+      "file_size_bytes": 1,
+      "keyword": "theme",
+      "location": "Pune, India",
+      "total_rows": 1,
+      "imported": 1,
+      "duplicates_skipped": 1,
+      "invalid_rows": 1,
+      "enriched": 1,
+      "row_errors": [
+        {
+          "line": 1,
+          "message": "string",
+          "company": "Acme Switchgear"
+        }
+      ],
+      "dedup_signals": {},
+      "error_message": "string",
+      "created_at": "2026-07-30T09:00:00Z",
+      "completed_at": "2026-07-30T09:00:00Z"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "page_size": 1,
+    "total_items": 1,
+    "total_pages": 1,
+    "has_next": true,
+    "has_previous": true
+  }
+}
+```
+
+**Example curl:**
+```bash
+curl -X GET \
+  "http://localhost:8001/api/v1/imports" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### `GET /api/v1/imports/{import_id}`
+
+**Get Import**
+
+- **Method:** `GET`
+- **URL:** `http://localhost:8001/api/v1/imports/{import_id}`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>`
+- **Path parameters:**
+  - `import_id` (string) — required
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response Body** (`200`):
+```json
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "source": "csv_upload",
+  "status": "processing",
+  "file_name": "string",
+  "file_size_bytes": 1,
+  "keyword": "theme",
+  "location": "Pune, India",
+  "total_rows": 1,
+  "imported": 1,
+  "duplicates_skipped": 1,
+  "invalid_rows": 1,
+  "enriched": 1,
+  "row_errors": [
+    {
+      "line": 1,
+      "message": "string",
+      "company": "Acme Switchgear"
+    }
+  ],
+  "dedup_signals": {},
+  "error_message": "string",
+  "created_at": "2026-07-30T09:00:00Z",
+  "completed_at": "2026-07-30T09:00:00Z"
+}
+```
+
+**Example curl:**
+```bash
+curl -X GET \
+  "http://localhost:8001/api/v1/imports/{import_id}" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
 ```

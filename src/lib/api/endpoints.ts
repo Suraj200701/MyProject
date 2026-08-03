@@ -24,6 +24,9 @@ import type {
   CityPoint,
   CountryPoint,
   CsvImportResult,
+  ImportSource,
+  LeadImportOut,
+  MapsSearchUrlOut,
   DashboardStatsOut,
   DataResponse,
   DayPoint,
@@ -237,6 +240,43 @@ export const searchApi = {
     apiFetch<WebsiteScanOut>("/scan-website", { method: "POST", body: { url } }),
 
   scans: (query: PaginationQuery = {}) => apiFetch<Page<WebsiteScanOut>>("/scans", { query }),
+};
+
+// --- Imports ------------------------------------------------------------
+
+/**
+ * Import runs and the Google Maps Search helper.
+ *
+ * `mapsSearchUrl` only *builds* a link — nothing here contacts Google Maps. The
+ * CSV the user's own extractor extension produced is uploaded to
+ * `/imports/google-maps`, which runs the normal dedupe/score/enrich pipeline.
+ */
+export const importsApi = {
+  mapsSearchUrl: (keyword: string, location?: string) =>
+    apiFetch<MapsSearchUrlOut>("/imports/google-maps/search-url", {
+      method: "POST",
+      body: { keyword, location: location || null },
+    }),
+
+  importGoogleMaps: (params: {
+    file: File;
+    keyword?: string;
+    location?: string;
+    enrich?: boolean;
+  }) => {
+    const form = new FormData();
+    form.append("file", params.file);
+    if (params.keyword) form.append("keyword", params.keyword);
+    if (params.location) form.append("location", params.location);
+    form.append("enrich", String(Boolean(params.enrich)));
+    // No Content-Type header: the browser must set the multipart boundary.
+    return apiFetch<LeadImportOut>("/imports/google-maps", { method: "POST", formData: form });
+  },
+
+  history: (query: PaginationQuery & { source?: ImportSource } = {}) =>
+    apiFetch<Page<LeadImportOut>>("/imports", { query }),
+
+  get: (id: string) => apiFetch<LeadImportOut>(`/imports/${id}`),
 };
 
 // --- Dashboard ----------------------------------------------------------

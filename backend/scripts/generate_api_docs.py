@@ -112,6 +112,7 @@ TAG_ORDER = [
     "Settings",
     "Team",
     "Exports",
+    "Imports",
 ]
 
 TAG_INTRO = {
@@ -127,6 +128,7 @@ TAG_INTRO = {
     "Map": "Geocoding, nearby-place search, and distance calculation. `/map/nearby-leads` works with no API key.",
     "Admin": "Platform-wide superadmin endpoints — every route requires `is_superadmin=true` on the caller.",
     "Settings": "Profile, organization, personal API keys, generic settings store, and backup snapshots.",
+    "Imports": "Lead imports — the Google Maps Search workflow (build a Maps URL, then import the CSV the user's own extractor extension exported) plus generic CSV import, with per-run history. Nothing here contacts Google Maps.",
     "Exports": "Export Center — generate CSV/Excel/PDF/JSON exports of leads, search results, and reports, then download them via a signed URL.",
     "Team": "Workspace membership, invitations, and role management.",
 }

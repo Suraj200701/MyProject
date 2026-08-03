@@ -39,17 +39,19 @@ Failed`. Leads sourced here therefore have no coordinates unless the project is
 entitled, which is why `search()` logs a one-time warning naming the cause: a
 silent absence of map pins is otherwise very hard to diagnose.
 
-City/state/pincode are likewise absent as discrete fields, so they are parsed
-out of the trailing components of `placeAddress`.
+City/state/pincode are likewise absent as discrete fields, so they are derived
+from `placeAddress` via `services.enrichment.address.parse_address` — the same
+parser the CSV importer uses, so an address yields the same city whichever door
+it came through.
 """
 
 from __future__ import annotations
 
 import logging
-import re
 import time
 
 from config.settings import settings
+from services.enrichment.address import parse_address
 from services.providers.base import (
     NormalizedLead,
     ProviderRunStatus,
@@ -98,9 +100,6 @@ _ADMINISTRATIVE_TYPES = {
     "HOUSE_NUMBER",
     "HOUSE_NAME",
 }
-
-# Trailing "..., <city>, <state>, <6-digit pin>" of a Mappls placeAddress.
-_PINCODE_RE = re.compile(r"\b(\d{6})\b")
 
 
 class MapplsAuthError(PermanentProviderError):
@@ -331,11 +330,12 @@ class MapplsProvider:
             return None
 
         address = item.get("placeAddress") or ""
-        parsed_city, parsed_state, pincode = _split_place_address(address)
+        parsed = parse_address(address)
         # Licensed projects return discrete city/state fields; unlicensed ones
         # only have the address string. Prefer the explicit values when present.
-        city = item.get("city") or item.get("district") or parsed_city
-        state = item.get("state") or parsed_state
+        city = item.get("city") or item.get("district") or parsed.city
+        state = item.get("state") or parsed.state
+        pincode = parsed.postal_code
 
         return NormalizedLead(
             company_name=name,
@@ -346,6 +346,7 @@ class MapplsProvider:
             country="India",  # Mappls is an India-only dataset
             lat=_as_float(item.get("latitude") or item.get("lat")),
             lng=_as_float(item.get("longitude") or item.get("lng") or item.get("lon")),
+            address=address or None,
             phone=item.get("mobileNo") or item.get("phone"),
             tags=[t for t in [query.industry] if t],
             raw={
@@ -358,39 +359,6 @@ class MapplsProvider:
             },
             source_provider=self.name,
         )
-
-
-def _split_place_address(address: str) -> tuple[str | None, str | None, str | None]:
-    """Pulls (city, state, pincode) out of a Mappls `placeAddress`.
-
-    Mappls formats a full address as comma-separated components ending in
-    `..., <city>, <state>, <pincode>`, but both the pincode and the state are
-    sometimes absent. The pincode is located by pattern rather than by position;
-    city/state are then read from what remains, widening the interpretation as
-    components run out rather than mislabelling a city as a state.
-    """
-    if not address:
-        return None, None, None
-
-    parts = [p.strip() for p in address.split(",") if p.strip()]
-    if not parts:
-        return None, None, None
-
-    pincode = None
-    match = _PINCODE_RE.search(parts[-1])
-    if match:
-        pincode = match.group(1)
-        parts = parts[:-1]
-
-    if len(parts) >= 3:
-        return parts[-2], parts[-1], pincode
-    if len(parts) == 2:
-        # "Wagle Estate, Thane" — locality then city, with no state component.
-        return parts[-1], None, pincode
-    if len(parts) == 1:
-        # A single component is an administrative area, not a city within one.
-        return None, parts[0], pincode
-    return None, None, pincode
 
 
 def _mask(value: str | None) -> str:
