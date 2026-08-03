@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from models.search import ApiProvider
 from services.providers.base import LeadProvider
 from services.providers.bing_search import BingSearchProvider
+from services.providers.geoapify import GeoapifyProvider
 from services.providers.google_places import GooglePlacesProvider
 from services.providers.mappls import MapplsProvider
 from services.providers.website_search import WebsiteSearchProvider
@@ -64,6 +65,11 @@ PROVIDER_CREDENTIAL_SPECS: dict[str, CredentialSpec] = {
         key_env_var="BING_SEARCH_API_KEY",
         help_url="https://portal.azure.com/",
     ),
+    "Geoapify": CredentialSpec(
+        key_label="API key",
+        key_env_var="GEOAPIFY_API_KEY",
+        help_url="https://myprojects.geoapify.com/",
+    ),
 }
 
 # Provider-row name -> factory taking the decrypted (key, secret) pair.
@@ -71,6 +77,7 @@ _ADAPTER_FACTORIES: dict[str, callable] = {
     "Google Places": lambda key, secret: GooglePlacesProvider(api_key=key),
     "Mappls (MapmyIndia)": lambda key, secret: MapplsProvider(client_id=key, client_secret=secret),
     "Bing Search": lambda key, secret: BingSearchProvider(api_key=key),
+    "Geoapify": lambda key, secret: GeoapifyProvider(api_key=key),
     # Crawls sites found from the query itself — no third-party credential.
     "Company Website Search": lambda key, secret: WebsiteSearchProvider(),
 }

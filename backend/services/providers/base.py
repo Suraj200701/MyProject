@@ -36,6 +36,18 @@ class ProviderRunStatus(StrEnum):
     SKIPPED = "skipped"
 
 
+def _text(value: object, max_length: int) -> str | None:
+    """Trimmed string, or None when empty. Accepts any JSON scalar.
+
+    Providers hand back ints and floats where strings are expected (see
+    `NormalizedLead.__post_init__`), so this coerces rather than assuming.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text[:max_length] or None
+
+
 @dataclass
 class NormalizedLead:
     """A single lead candidate in provider-independent form.
@@ -69,15 +81,25 @@ class NormalizedLead:
     source_provider: str | None = None
 
     def __post_init__(self) -> None:
-        self.company_name = (self.company_name or "").strip()[:255]
-        if self.website:
-            self.website = self.website.strip()[:255]
-        if self.address:
-            self.address = self.address.strip()[:500]
-        if self.city:
-            self.city = self.city.strip()[:150]
-        if self.country:
-            self.country = self.country.strip()[:150]
+        # Coerce text fields to `str` before trimming.
+        #
+        # Provider payloads are arbitrary JSON, and some of it is not typed the
+        # way the field names suggest: OpenStreetMap-derived sources (Geoapify,
+        # and Mappls' `datasource.raw`) emit `phone` and `postcode` as **numbers**
+        # when the tag value happens to be all digits. That reached
+        # `dedup.normalize_phone_key`, whose `re.sub` raised
+        # "expected string or bytes-like object, got 'int'" and turned a valid
+        # search into a 500. Normalizing here fixes it for every provider at once
+        # rather than once per adapter.
+        self.company_name = _text(self.company_name, 255) or ""
+        self.website = _text(self.website, 255)
+        self.address = _text(self.address, 500)
+        self.city = _text(self.city, 150)
+        self.country = _text(self.country, 150)
+        self.phone = _text(self.phone, 32)
+        self.email = _text(self.email, 255)
+        self.contact_name = _text(self.contact_name, 255)
+        self.gst_number = _text(self.gst_number, 32)
         # Providers report ratings on different scales; clamp to the 0-5 the
         # schema (Numeric(2,1)) and the frontend's star display expect.
         if self.rating is not None:

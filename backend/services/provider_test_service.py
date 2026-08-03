@@ -7,6 +7,7 @@ proves the credential works end to end:
                     came back, and report its expiry.
     Google Places   POST searchText with maxResultCount=1 and a one-field mask.
     Bing Search     GET /v7.0/search with count=1 and responseFilter=WebPages.
+    Geoapify        GET /v2/places with limit=1 over a 500m circle.
     OpenAI          GET /v1/models — the standard credential probe, no tokens
                     billed.
     SMTP            Open a real connection, STARTTLS if configured, and LOGIN
@@ -290,6 +291,49 @@ async def test_openai(api_key: str | None) -> TestOutcome:
     )
 
 
+async def test_geoapify(api_key: str | None) -> TestOutcome:
+    """One-result Places call — the cheapest request that proves the key works."""
+    name = "Geoapify"
+    key = api_key or settings.GEOAPIFY_API_KEY
+    if not key:
+        return _fail(name, "No API key configured for Geoapify.", 0, hint="Set GEOAPIFY_API_KEY.")
+
+    timer = _Timer()
+    with timer:
+        try:
+            async with httpx.AsyncClient(timeout=TEST_TIMEOUT_SECONDS) as http:
+                response = await http.get(
+                    f"{settings.geoapify_origin}/v2/places",
+                    params={
+                        "categories": "commercial",
+                        # A tiny circle over central London: any valid key returns
+                        # a well-formed response, and the request stays trivial.
+                        "filter": "circle:-0.1276,51.5072,500",
+                        "limit": 1,
+                        "apiKey": key,
+                    },
+                )
+                response.raise_for_status()
+                payload = response.json()
+        except httpx.HTTPStatusError as exc:
+            logger.exception("Geoapify test call rejected")
+            return _fail(name, f"Geoapify rejected the key ({exc.response.status_code}).",
+                         timer.ms, **_describe_http_error(exc))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Geoapify test call failed")
+            return _fail(name, f"Could not reach Geoapify: {type(exc).__name__}", timer.ms,
+                         **_describe_exception(exc))
+
+    return TestOutcome(
+        provider=name,
+        success=True,
+        authenticated=True,
+        message="Authenticated. Places API responded.",
+        latency_ms=timer.elapsed_ms,
+        details={"places_returned": len(payload.get("features") or [])},
+    )
+
+
 # --- Infrastructure dependencies -----------------------------------------
 #
 # These have no ApiProvider row (they are not lead sources), so they are
@@ -454,6 +498,9 @@ async def test_provider(row: ApiProvider) -> TestOutcome:
 
     if row.name == "Bing Search":
         return await test_bing_search(key)
+
+    if row.name == "Geoapify":
+        return await test_geoapify(key)
 
     if row.name == "OpenAI GPT":
         # OpenAI has no per-row credential column of its own; it is enrichment

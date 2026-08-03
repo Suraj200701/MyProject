@@ -87,18 +87,18 @@ async def run_search(
     balance check happens and no credits are debited — see that helper for who
     qualifies and why.
     """
-    provider_rows = list(
-        (
-            await db.execute(
-                select(ApiProvider).where(ApiProvider.connected.is_(True))
-            )
-        ).scalars().all()
-    )
-    # `connected` is the operator's on/off switch; if nothing has been switched
-    # on yet, fall back to the whole catalogue so a freshly-configured API key
-    # works without also having to flip the flag.
-    if not provider_rows:
-        provider_rows = list((await db.execute(select(ApiProvider))).scalars().all())
+    # Every catalogue row is a candidate; `resolve_lead_providers` is the single
+    # authority on which ones can actually run (it decrypts credentials and drops
+    # anything unconfigured or without an adapter).
+    #
+    # This deliberately does NOT filter on `ApiProvider.connected`. That column
+    # records "this workspace stored its own credentials", which the API Manager
+    # grid displays — it is not a routing switch, and nothing in the UI can set
+    # it independently. Using it as a filter meant that the moment one provider
+    # got workspace credentials, every provider configured through `.env` was
+    # silently excluded from search: a newly added key would appear configured,
+    # test green, and still never be queried.
+    provider_rows = list((await db.execute(select(ApiProvider))).scalars().all())
 
     resolved = resolve_lead_providers(provider_rows)
     unconfigured = [row for row in provider_rows if row.name not in {r.name for r, _ in resolved}]

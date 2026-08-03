@@ -108,11 +108,18 @@ def normalize_domain(website: str | None) -> str:
     return ".".join(parts[-2:]) if len(parts) >= 2 else host
 
 
-def normalize_phone_key(phone: str | None) -> str:
-    """Reduces a phone number to comparable digits (last 10 significant)."""
+def normalize_phone_key(phone: object) -> str:
+    """Reduces a phone number to comparable digits (last 10 significant).
+
+    Takes `object`, not `str | None`: provider payloads are arbitrary JSON and
+    OpenStreetMap-derived sources emit all-digit phone tags as numbers. This used
+    to raise `TypeError: expected string or bytes-like object, got 'int'` from
+    `re.sub` and fail the entire search. `NormalizedLead` now coerces too — this
+    stays defensive because dedup is also called with raw provider values.
+    """
     if not phone:
         return ""
-    digits = re.sub(r"\D", "", phone)
+    digits = re.sub(r"\D", "", str(phone))
     if not digits:
         return ""
     # Compare on the last 10 digits so +919876543210, 09876543210 and

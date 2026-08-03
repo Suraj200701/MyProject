@@ -362,3 +362,35 @@ and imports the CSV the user's own extractor extension exported.
 | "Import leads" | 🟢 `POST /imports/google-maps` | Multipart. Runs parse -> dedupe -> AI score -> optional website enrichment -> save. Returns the history row with counts and per-row errors. |
 | Import history table | 🟢 `GET /imports`, `GET /imports/{id}` | Newest first, filterable by source. Failed runs are recorded too. |
 | — | 🟢 `POST /imports` | Generic CSV import with history. The older `POST /leads/import` still works but records no history. |
+
+## Geoapify (provider add-on)
+
+Added as an additional lead source **and** as the geocoding backend for the Map
+module. It is the only configured provider that returns coordinates: Google
+Places needs a key this deployment does not have, and the Mappls project is not
+licensed for coordinate delivery.
+
+| Capability | Endpoint used | Notes |
+| --- | --- | --- |
+| Lead search | `GET /v1/geocode/search` then `GET /v2/places` | Two requests: Places requires both a category and a spatial filter, so the location is geocoded first and a `circle:lon,lat,radius` filter is built from it. Radius is `GEOAPIFY_SEARCH_RADIUS_METERS` (20km default). |
+| `POST /map/geocode` | `GET /v1/geocode/search` | Now returns real coordinates without a Google key. |
+| `GET /map/reverse-geocode` | `GET /v1/geocode/reverse` | |
+| `GET /map/nearby-places` | `GET /v2/places` | Unmapped keyword falls back to `commercial` here — the caller asked "what is near this point", so a broad answer is useful. |
+| `GET /map/autocomplete` | `GET /v1/geocode/autocomplete` | Previously Mappls-only. |
+| Test Connection | `GET /v2/places?limit=1` | 500m circle; a bad key returns `401 Invalid apiKey`. |
+
+**Two version prefixes.** Places is `/v2`, geocoding is `/v1` —
+`/v2/geocode/search` answers 404. `GEOAPIFY_BASE_URL` is therefore treated as an
+*origin*: a trailing `/v1` or `/v2` is stripped and the correct version appended
+per endpoint, so the documented `https://api.geoapify.com/v2` works everywhere.
+
+**Keyword mapping.** Geoapify requires a category code; free text alone is
+rejected with 400. `services/providers/geoapify.py::_KEYWORD_CATEGORIES` maps
+everyday words onto the taxonomy, using only codes verified against the live API.
+An unmapped keyword is **skipped with an explanation** rather than sent as a broad
+`commercial` sweep — returning unrelated businesses would look like the search
+worked.
+
+**Data quality.** Coordinates and addresses are near-universal; `website` and
+`phone` come from OpenStreetMap tagging and were present on roughly 1 in 5
+sampled results, which is why the website-enrichment path still matters.

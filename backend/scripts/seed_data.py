@@ -79,6 +79,10 @@ PROVIDERS = [
     ("Google Places", ProviderCategory.MAPS, "🗺️", "Business discovery & place details", 10000, 2),
     ("Mappls (MapmyIndia)", ProviderCategory.MAPS, "📍", "India-focused maps & POI search", 5000, 1),
     ("Bing Search", ProviderCategory.SEARCH, "🔎", "Company website discovery via web search", 3000, 1),
+    # The only configured source that returns coordinates, which is what makes
+    # map plotting possible — Google needs a key this deployment lacks and the
+    # Mappls project is not licensed for coordinate delivery.
+    ("Geoapify", ProviderCategory.MAPS, "🧭", "OpenStreetMap places, geocoding & autocomplete", 3000, 1),
     # No paid dependency — crawls the company's own site, so it costs 1 credit
     # for the bandwidth/compute rather than for third-party API usage.
     ("Company Website Search", ProviderCategory.SEARCH, "🌐", "Crawls a company website for contact details", 100000, 1),

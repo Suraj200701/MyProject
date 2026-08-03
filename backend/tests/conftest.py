@@ -44,10 +44,14 @@ os.environ["CREDIT_METERING_DISABLED_IN_DEVELOPMENT"] = "false"
 # SEARCH_MAX_RESULTS_PER_PROVIDER is pinned to the code default for the same
 # reason — a developer raising it in `.env` must not change what a search is
 # expected to cost.
+# Every provider credential must be listed here. Adding a provider without
+# clearing its key here makes the suite depend on the developer's `.env` again —
+# which is exactly how the Geoapify add-on broke four existing tests.
 os.environ["GOOGLE_MAPS_API_KEY"] = ""
 os.environ["MAPPLS_CLIENT_ID"] = ""
 os.environ["MAPPLS_CLIENT_SECRET"] = ""
 os.environ["BING_SEARCH_API_KEY"] = ""
+os.environ["GEOAPIFY_API_KEY"] = ""
 os.environ["SEARCH_MAX_RESULTS_PER_PROVIDER"] = "5"
 
 from config.settings import get_settings  # noqa: E402

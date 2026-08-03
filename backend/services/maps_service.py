@@ -2,11 +2,18 @@
 
 Provider selection
 ------------------
-Two backends are supported, tried in order:
+Three backends are supported, tried in order:
 
   1. **Google Maps** — used when `GOOGLE_MAPS_API_KEY` is set. Global coverage.
-  2. **Mappls (MapmyIndia)** — used when `MAPPLS_CLIENT_ID`/`MAPPLS_CLIENT_SECRET`
-     are set. India-only, but it is what many Indian deployments actually have.
+  2. **Geoapify** — used when `GEOAPIFY_API_KEY` is set. OpenStreetMap-derived,
+     global, and returns real coordinates for both forward and reverse geocoding.
+  3. **Mappls (MapmyIndia)** — used when `MAPPLS_CLIENT_ID`/`MAPPLS_CLIENT_SECRET`
+     are set. India-only, and see the entitlement note below.
+
+Geoapify sits ahead of Mappls deliberately: Mappls forward geocoding needs an
+entitlement many projects do not have, whereas Geoapify answers with coordinates
+on the free tier. Google stays first where a key exists, since it has the richest
+place data.
 
 Previously every function here required a Google key, so a deployment
 configured with Mappls alone got `400 Google Maps is not configured` from the
@@ -34,6 +41,7 @@ import httpx
 
 from config.settings import settings
 from services.providers.http import PermanentProviderError, TransientProviderError
+from services.providers.geoapify import GeoapifyClient
 from services.providers.mappls import MapplsClient
 from utils.exceptions import BadRequestError
 
@@ -46,13 +54,18 @@ DISTANCE_MATRIX_URL = "https://maps.googleapis.com/maps/api/distancematrix/json"
 EARTH_RADIUS_KM = 6371.0088
 
 _NO_PROVIDER = (
-    "No geocoding provider is configured — set GOOGLE_MAPS_API_KEY, or "
-    "MAPPLS_CLIENT_ID and MAPPLS_CLIENT_SECRET, in .env"
+    "No geocoding provider is configured — set GEOAPIFY_API_KEY, "
+    "GOOGLE_MAPS_API_KEY, or MAPPLS_CLIENT_ID and MAPPLS_CLIENT_SECRET, in .env"
 )
 
 
 def _google_configured() -> bool:
     return bool(settings.GOOGLE_MAPS_API_KEY)
+
+
+def _geoapify() -> GeoapifyClient | None:
+    client = GeoapifyClient()
+    return client if client.is_configured else None
 
 
 def _mappls() -> MapplsClient | None:
@@ -61,8 +74,25 @@ def _mappls() -> MapplsClient | None:
 
 
 def _require_any_provider() -> None:
-    if not _google_configured() and _mappls() is None:
+    if not _google_configured() and _geoapify() is None and _mappls() is None:
         raise BadRequestError(_NO_PROVIDER)
+
+
+async def _attempt(label: str, awaitable):
+    """Runs one provider call, translating provider errors into 400s.
+
+    Deliberately does **not** fall through to the next provider on failure: a
+    misconfigured primary silently shifting to a secondary with different data
+    quality is far harder to diagnose than a clear error naming the provider that
+    said no.
+    """
+    try:
+        return await awaitable
+    except PermanentProviderError as exc:
+        logger.warning("%s call failed: %s", label, exc)
+        raise BadRequestError(f"{label} is unavailable: {exc}") from exc
+    except TransientProviderError as exc:
+        raise BadRequestError(f"{label} is temporarily unavailable: {exc}") from exc
 
 
 def _require_google(feature: str) -> None:
@@ -114,15 +144,13 @@ async def geocode_address(address: str) -> dict | None:
             "formatted_address": results[0].get("formatted_address", address),
         }
 
-    client = _mappls()
-    assert client is not None  # guaranteed by _require_any_provider
-    try:
-        return await client.geocode(address)
-    except PermanentProviderError as exc:
-        logger.warning("Mappls geocode failed for %r: %s", address, exc)
-        raise BadRequestError(f"Mappls geocoding is unavailable: {exc}") from exc
-    except TransientProviderError as exc:
-        raise BadRequestError(f"Mappls geocoding is temporarily unavailable: {exc}") from exc
+    geoapify = _geoapify()
+    if geoapify is not None:
+        return await _attempt("Geoapify geocoding", geoapify.geocode(address))
+
+    mappls = _mappls()
+    assert mappls is not None  # guaranteed by _require_any_provider
+    return await _attempt("Mappls geocoding", mappls.geocode(address))
 
 
 async def reverse_geocode(lat: float, lng: float) -> dict | None:
@@ -149,15 +177,13 @@ async def reverse_geocode(lat: float, lng: float) -> dict | None:
             "formatted_address": results[0].get("formatted_address", ""),
         }
 
-    client = _mappls()
-    assert client is not None
-    try:
-        return await client.reverse_geocode(lat, lng)
-    except PermanentProviderError as exc:
-        logger.warning("Mappls reverse geocode failed for %s,%s: %s", lat, lng, exc)
-        raise BadRequestError(f"Mappls reverse geocoding is unavailable: {exc}") from exc
-    except TransientProviderError as exc:
-        raise BadRequestError(f"Mappls reverse geocoding is temporarily unavailable: {exc}") from exc
+    geoapify = _geoapify()
+    if geoapify is not None:
+        return await _attempt("Geoapify reverse geocoding", geoapify.reverse_geocode(lat, lng))
+
+    mappls = _mappls()
+    assert mappls is not None
+    return await _attempt("Mappls reverse geocoding", mappls.reverse_geocode(lat, lng))
 
 
 async def nearby_search(lat: float, lng: float, radius_meters: int, keyword: str | None = None) -> list[dict]:
@@ -193,15 +219,35 @@ async def nearby_search(lat: float, lng: float, radius_meters: int, keyword: str
             for place in (response.json().get("results") or [])
         ]
 
+    geoapify = _geoapify()
+    if geoapify is not None:
+        from services.providers.geoapify import categories_for
+
+        # Geoapify Places needs a category, not free text. An unrecognised
+        # keyword falls back to `commercial` here (unlike lead search, which
+        # skips): the caller asked for "what is near this point", so a broad
+        # answer is useful rather than misleading.
+        categories = categories_for(keyword or "") or ("commercial",)
+        features = await _attempt(
+            "Geoapify nearby search",
+            geoapify.places_in_circle(categories, lat, lng, radius_meters, 20),
+        )
+        return [
+            {
+                "name": props.get("name") or props.get("address_line1"),
+                "address": props.get("formatted"),
+                "lat": _as_float(props.get("lat")),
+                "lng": _as_float(props.get("lon")),
+                "source": "geoapify",
+            }
+            for props in ((f.get("properties") or {}) for f in features)
+        ]
+
     client = _mappls()
     assert client is not None
-    try:
-        places = await client.nearby(lat, lng, radius_meters, keyword)
-    except PermanentProviderError as exc:
-        logger.warning("Mappls nearby search failed at %s,%s: %s", lat, lng, exc)
-        raise BadRequestError(f"Mappls nearby search is unavailable: {exc}") from exc
-    except TransientProviderError as exc:
-        raise BadRequestError(f"Mappls nearby search is temporarily unavailable: {exc}") from exc
+    places = await _attempt(
+        "Mappls nearby search", client.nearby(lat, lng, radius_meters, keyword)
+    )
 
     return [
         {
@@ -217,21 +263,24 @@ async def nearby_search(lat: float, lng: float, radius_meters: int, keyword: str
 
 
 async def autocomplete(query: str, lat: float | None = None, lng: float | None = None) -> list[dict]:
-    """Type-ahead place suggestions. Mappls only — Google's Places Autocomplete
-    is a separately billed product this deployment does not use."""
+    """Type-ahead place suggestions, from Geoapify or Mappls.
+
+    Google's Places Autocomplete is a separately billed product this deployment
+    does not use, so it is not part of the chain here.
+    """
+    geoapify = _geoapify()
+    if geoapify is not None:
+        # Already normalized to {name, address, lat, lng, type} by the client.
+        return await _attempt("Geoapify autocomplete", geoapify.autocomplete(query))
+
     client = _mappls()
     if client is None:
         raise BadRequestError(
-            "Place autocomplete requires MAPPLS_CLIENT_ID and MAPPLS_CLIENT_SECRET in .env"
+            "Place autocomplete requires GEOAPIFY_API_KEY, or MAPPLS_CLIENT_ID and "
+            "MAPPLS_CLIENT_SECRET, in .env"
         )
 
-    try:
-        suggestions = await client.autocomplete(query, lat, lng)
-    except PermanentProviderError as exc:
-        logger.warning("Mappls autocomplete failed for %r: %s", query, exc)
-        raise BadRequestError(f"Mappls autocomplete is unavailable: {exc}") from exc
-    except TransientProviderError as exc:
-        raise BadRequestError(f"Mappls autocomplete is temporarily unavailable: {exc}") from exc
+    suggestions = await _attempt("Mappls autocomplete", client.autocomplete(query, lat, lng))
 
     return [
         {

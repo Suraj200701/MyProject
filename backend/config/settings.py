@@ -126,6 +126,33 @@ class Settings(BaseSettings):
     BING_SEARCH_API_KEY: str = ""
     BING_SEARCH_ENDPOINT: str = "https://api.bing.microsoft.com/v7.0/search"
 
+    # --- Geoapify (OpenStreetMap-derived places + geocoding) ---
+    # Single API key, passed as an `apiKey` query parameter.
+    GEOAPIFY_API_KEY: str = ""
+    # Configurable so a self-hosted or proxied deployment can be substituted.
+    #
+    # Geoapify splits its API across two version prefixes: Places is `/v2`,
+    # geocoding is `/v1` (`/v2/geocode/search` answers 404). So this value is
+    # treated as an *origin*: any trailing `/v1` or `/v2` is stripped and the
+    # correct version is appended per endpoint. That way the documented
+    # `https://api.geoapify.com/v2` works for every call, not just Places.
+    GEOAPIFY_BASE_URL: str = "https://api.geoapify.com"
+    # Radius of the circle searched around a geocoded location. Geoapify's Places
+    # API requires a spatial filter, so a keyword+location search becomes
+    # "geocode the location, then search this far around it". 20km covers a
+    # metro area without pulling in neighbouring towns.
+    GEOAPIFY_SEARCH_RADIUS_METERS: int = 20_000
+
+    @computed_field
+    @property
+    def geoapify_origin(self) -> str:
+        """`GEOAPIFY_BASE_URL` with any trailing version segment removed."""
+        origin = (self.GEOAPIFY_BASE_URL or "").rstrip("/")
+        for suffix in ("/v1", "/v2"):
+            if origin.endswith(suffix):
+                return origin[: -len(suffix)]
+        return origin
+
     # --- AI lead scoring / summaries ---
     # When unset, scoring falls back to a deterministic signal-based scorer
     # (see services/enrichment/scoring.py) — that fallback is a real heuristic
