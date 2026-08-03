@@ -2,16 +2,27 @@
 
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { searchAnalytics } from "@/lib/mock-data";
+import { useSearchAnalytics } from "@/lib/api/queries";
+import { AsyncContent } from "@/components/shared/async-content";
 import { ChartTooltip } from "@/components/dashboard/chart-tooltip";
 
 export function SearchAnalyticsChart() {
+  const { data, isPending, isError, error } = useSearchAnalytics();
+  const searchAnalytics = data ?? [];
   return (
     <Card className="glass overflow-hidden">
       <CardHeader>
         <CardTitle>Search Analytics</CardTitle>
         <p className="mt-1 text-xs text-muted-foreground">Searches run this week</p>
       </CardHeader>
+      <AsyncContent
+        isPending={isPending}
+        isError={isError}
+        error={error}
+        isEmpty={searchAnalytics.length === 0}
+        emptyMessage="No searches run this week."
+        className="h-full"
+      >
       <div className="h-64 w-full px-2 pb-4 pt-4 sm:px-4">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={searchAnalytics} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
@@ -35,6 +46,7 @@ export function SearchAnalyticsChart() {
           </BarChart>
         </ResponsiveContainer>
       </div>
+      </AsyncContent>
     </Card>
   );
 }

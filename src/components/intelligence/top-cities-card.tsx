@@ -2,24 +2,15 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { mockLeads } from "@/lib/mock-data";
+import { AsyncContent, SkeletonRows } from "@/components/shared/async-content";
+import { useTopCities } from "@/lib/api/queries";
 
 export function TopCitiesCard() {
-  const counts = new Map<string, { city: string; country: string; count: number }>();
-  for (const lead of mockLeads) {
-    const existing = counts.get(lead.city);
-    if (existing) {
-      existing.count += 1;
-    } else {
-      counts.set(lead.city, { city: lead.city, country: lead.country, count: 1 });
-    }
-  }
-
-  const cities = Array.from(counts.values())
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 8);
-
-  const max = cities.length > 0 ? cities[0].count : 1;
+  // Aggregated and ranked in SQL by GET /analytics/top-cities, rather than
+  // counted client-side over whatever leads happened to be loaded.
+  const { data, isPending, isError, error } = useTopCities();
+  const cities = data ?? [];
+  const max = cities.length > 0 ? Math.max(...cities.map((c) => c.leads)) : 1;
 
   return (
     <Card>
@@ -27,21 +18,33 @@ export function TopCitiesCard() {
         <CardTitle>Top Cities</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {cities.map((c) => {
-          const pct = (c.count / max) * 100;
-          return (
-            <div key={c.city}>
-              <div className="mb-1.5 flex items-center justify-between text-sm">
-                <span className="font-medium text-foreground">
-                  {c.city}
-                  <span className="ml-1.5 text-xs text-muted-foreground">{c.country}</span>
-                </span>
-                <span className="text-muted-foreground tabular-nums">{c.count} leads</span>
+        <AsyncContent
+          isPending={isPending}
+          isError={isError}
+          error={error}
+          isEmpty={cities.length === 0}
+          emptyMessage="No city data yet."
+          className="min-h-[200px]"
+          skeleton={<SkeletonRows rows={5} />}
+        >
+          {cities.map((c) => {
+            const pct = max > 0 ? (c.leads / max) * 100 : 0;
+            return (
+              <div key={`${c.city}-${c.country ?? ""}`}>
+                <div className="mb-1.5 flex items-center justify-between text-sm">
+                  <span className="font-medium text-foreground">
+                    {c.city}
+                    {c.country ? (
+                      <span className="ml-1.5 text-xs text-muted-foreground">{c.country}</span>
+                    ) : null}
+                  </span>
+                  <span className="text-muted-foreground tabular-nums">{c.leads} leads</span>
+                </div>
+                <Progress value={pct} />
               </div>
-              <Progress value={pct} />
-            </div>
-          );
-        })}
+            );
+          })}
+        </AsyncContent>
       </CardContent>
     </Card>
   );

@@ -2,7 +2,8 @@
 
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { countryAnalytics } from "@/lib/mock-data";
+import { useCountryAnalytics } from "@/lib/api/queries";
+import { AsyncContent } from "@/components/shared/async-content";
 
 const flags: Record<string, string> = {
   India: "🇮🇳",
@@ -14,6 +15,8 @@ const flags: Record<string, string> = {
 };
 
 export function CountryAnalyticsChart() {
+  const { data, isPending, isError, error } = useCountryAnalytics();
+  const countryAnalytics = data ?? [];
   const max = Math.max(...countryAnalytics.map((c) => c.leads));
 
   return (
@@ -22,6 +25,14 @@ export function CountryAnalyticsChart() {
         <CardTitle>Leads by Country</CardTitle>
         <p className="mt-1 text-xs text-muted-foreground">Geographic distribution of your lead base</p>
       </CardHeader>
+      <AsyncContent
+        isPending={isPending}
+        isError={isError}
+        error={error}
+        isEmpty={countryAnalytics.length === 0}
+        emptyMessage="No country data yet."
+        className="min-h-[200px] p-5"
+      >
       <div className="flex flex-col gap-4 p-5">
         {countryAnalytics.map((item) => (
           <div key={item.country} className="flex items-center gap-3">
@@ -40,6 +51,7 @@ export function CountryAnalyticsChart() {
           </div>
         ))}
       </div>
+      </AsyncContent>
     </Card>
   );
 }

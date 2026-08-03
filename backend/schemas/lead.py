@@ -161,3 +161,22 @@ class BulkDeleteRequest(BaseModel):
 
 
 SortOrder = Literal["asc", "desc"]
+
+
+class CsvImportRowError(BaseModel):
+    """One rejected or partially-accepted CSV row, with its spreadsheet line."""
+
+    line: int
+    message: str
+    company: str | None = None
+
+
+class CsvImportResult(BaseModel):
+    """Summary returned by POST /leads/import."""
+
+    total_rows: int
+    imported: int
+    duplicates_skipped: int
+    invalid_rows: int
+    errors: list[CsvImportRowError] = Field(default_factory=list)
+    dedup_signals: dict[str, int] = Field(default_factory=dict)

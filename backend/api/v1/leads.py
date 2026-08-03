@@ -2,13 +2,13 @@
 caller's current organization."""
 
 import uuid
-from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_current_organization, get_current_user
+from config.settings import settings
 from database.session import get_db
 from models.lead import Lead
 from models.organization import Organization
@@ -18,6 +18,8 @@ from repositories.lead_repository import LeadRepository
 from schemas.common import MessageResponse
 from schemas.lead import (
     BulkDeleteRequest,
+    CsvImportResult,
+    CsvImportRowError,
     LeadActivityOut,
     LeadCreate,
     LeadDetailOut,
@@ -27,10 +29,24 @@ from schemas.lead import (
     LeadUpdate,
     SortOrder,
 )
-from utils.exceptions import NotFoundError
+from services import lead_import
+from services.providers.base import NormalizedLead
+from utils.exceptions import BadRequestError, NotFoundError
 from utils.pagination import Page, PaginationParams, paginate, pagination_params
 
 router = APIRouter(prefix="/leads", tags=["Leads"])
+
+# Browsers and spreadsheet tools disagree on the CSV MIME type; accept the
+# common variants plus the generic octet-stream that some clients send.
+_CSV_CONTENT_TYPES = frozenset(
+    {
+        "text/csv",
+        "application/csv",
+        "text/plain",
+        "application/vnd.ms-excel",
+        "application/octet-stream",
+    }
+)
 
 
 async def _provider_name(db: AsyncSession, provider_id: uuid.UUID | None) -> str | None:
@@ -105,8 +121,47 @@ async def create_lead(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Manual lead entry.
+
+    Contract is unchanged. Two additions, both opt-in by omission:
+      * If `lead_score` is left at its default 0, the lead is scored by the same
+        engine used for search results, so a hand-entered lead is comparable to
+        a sourced one instead of sitting at zero forever. An explicit score is
+        always respected.
+      * If `ai_summary` is omitted, one is generated from the lead's real
+        attributes.
+    Duplicate detection runs against the organization's existing leads and is
+    reported via the `X-Duplicate-Of` response header rather than by rejecting
+    the request — a human typing a lead in is the authority on whether it's new.
+    """
     repo = LeadRepository(db)
     company = await repo.get_or_create_company(organization.id, payload)
+
+    normalized = NormalizedLead(
+        company_name=payload.company,
+        industry=payload.industry,
+        company_type=payload.company_type,
+        revenue_band=payload.revenue_band,
+        website=payload.website,
+        gst_number=payload.gst_number,
+        city=payload.city,
+        country=payload.country,
+        lat=payload.lat,
+        lng=payload.lng,
+        rating=payload.rating,
+        contact_name=payload.contact_name,
+        email=payload.email,
+        phone=payload.phone,
+        tags=payload.tags or [],
+        source_provider=lead_import.MANUAL_SOURCE,
+    )
+
+    lead_score = payload.lead_score
+    ai_summary = payload.ai_summary
+    if not lead_score or not ai_summary:
+        generated_score, generated_summary = await lead_import.score_manual_lead(normalized)
+        lead_score = lead_score or generated_score
+        ai_summary = ai_summary or generated_summary
 
     lead = await repo.create(
         organization_id=organization.id,
@@ -114,16 +169,56 @@ async def create_lead(
         contact_name=payload.contact_name,
         email=payload.email,
         phone=payload.phone,
-        lead_score=payload.lead_score,
+        lead_score=lead_score,
         status=payload.status,
         tags=payload.tags,
-        ai_summary=payload.ai_summary,
+        ai_summary=ai_summary,
         created_by_id=user.id,
     )
-    await repo.add_activity(lead.id, "created", "Lead added to database")
+    await repo.add_activity(lead.id, "created", "Lead added manually")
     await db.commit()
     await db.refresh(lead)
     return LeadOut.from_lead(lead)
+
+
+@router.post("/import", response_model=CsvImportResult, status_code=201)
+async def import_leads_csv(
+    file: UploadFile = File(..., description="CSV file with a company name column"),
+    organization: Organization = Depends(get_current_organization),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk-imports leads from a CSV file.
+
+    Headers are matched flexibly (`Company`, `company_name`, `Organisation`, …).
+    Rows are validated individually: a bad GSTIN, email or phone is reported and
+    the lead is still imported without that field, rather than failing the whole
+    file. Imported leads are deduplicated and scored like any other source.
+    """
+    if file.content_type and file.content_type not in _CSV_CONTENT_TYPES:
+        raise BadRequestError(
+            f"Expected a CSV file, received '{file.content_type}'"
+        )
+
+    content = await file.read()
+    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if len(content) > max_bytes:
+        raise BadRequestError(f"File exceeds the {settings.MAX_UPLOAD_SIZE_MB}MB limit")
+    if not content.strip():
+        raise BadRequestError("The uploaded file is empty")
+
+    result = await lead_import.import_leads(db, organization.id, user.id, content)
+    return CsvImportResult(
+        total_rows=result.total_rows,
+        imported=result.imported,
+        duplicates_skipped=result.duplicates_skipped,
+        invalid_rows=result.invalid_rows,
+        errors=[
+            CsvImportRowError(line=e.line, message=e.message, company=e.company)
+            for e in result.errors[:100]
+        ],
+        dedup_signals=result.dedup_signals,
+    )
 
 
 @router.patch("/{lead_id}", response_model=LeadOut)

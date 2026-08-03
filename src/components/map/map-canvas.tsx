@@ -4,7 +4,7 @@ import { Plus, Minus } from "lucide-react";
 import { PinMarker } from "@/components/map/pin-marker";
 import { ClusterMarker } from "@/components/map/cluster-marker";
 import { LeadPreviewCard } from "@/components/map/lead-preview-card";
-import { buildClusters, MAP_CENTER, type PositionedLead } from "@/components/map/map-utils";
+import { buildClusters, type PositionedLead } from "@/components/map/map-utils";
 
 export function MapCanvas({
   leads,
@@ -31,6 +31,22 @@ export function MapCanvas({
   const showClusters = !zoomed && clusters.some((c) => c.count > 1);
   const activeLead = leads.find((l) => l.id === (pinnedId ?? hoveredId)) ?? null;
 
+  /**
+   * Canvas centre for the radius overlay.
+   *
+   * Averaged from the pins currently rendered rather than read from a
+   * module-level constant computed off the old fixture's bounds — with real
+   * data that constant pointed at a fixed location unrelated to the leads.
+   * Falls back to the canvas middle when there is nothing to average.
+   */
+  const center =
+    leads.length > 0
+      ? {
+          x: leads.reduce((sum, l) => sum + l.x, 0) / leads.length,
+          y: leads.reduce((sum, l) => sum + l.y, 0) / leads.length,
+        }
+      : { x: 50, y: 50 };
+
   return (
     <div
       onClick={onDeselect}
@@ -44,8 +60,8 @@ export function MapCanvas({
       <div
         className="pointer-events-none absolute rounded-full border border-primary/30 bg-primary/[0.04] transition-all duration-300"
         style={{
-          left: `${MAP_CENTER.x}%`,
-          top: `${MAP_CENTER.y}%`,
+          left: `${center.x}%`,
+          top: `${center.y}%`,
           width: `${radiusPercent}%`,
           height: `${radiusPercent}%`,
           transform: "translate(-50%, -50%)",
@@ -53,7 +69,7 @@ export function MapCanvas({
       />
       <div
         className="pointer-events-none absolute size-2 rounded-full bg-primary shadow-[0_0_12px_2px_var(--color-primary)]"
-        style={{ left: `${MAP_CENTER.x}%`, top: `${MAP_CENTER.y}%`, transform: "translate(-50%, -50%)" }}
+        style={{ left: `${center.x}%`, top: `${center.y}%`, transform: "translate(-50%, -50%)" }}
       />
 
       {showClusters

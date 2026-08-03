@@ -2,7 +2,8 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { industryDistribution } from "@/lib/mock-data";
+import { useTopIndustries } from "@/lib/api/queries";
+import { AsyncContent } from "@/components/shared/async-content";
 
 const BAR_COLORS = [
   "bg-[linear-gradient(90deg,var(--color-primary),var(--color-accent))]",
@@ -10,6 +11,8 @@ const BAR_COLORS = [
 ];
 
 export function TopIndustriesCard() {
+  const { data, isPending, isError, error } = useTopIndustries();
+  const industryDistribution = data ?? [];
   const total = industryDistribution.reduce((sum, i) => sum + i.value, 0);
   const sorted = [...industryDistribution].sort((a, b) => b.value - a.value);
 
@@ -18,6 +21,14 @@ export function TopIndustriesCard() {
       <CardHeader>
         <CardTitle>Top Industries</CardTitle>
       </CardHeader>
+      <AsyncContent
+        isPending={isPending}
+        isError={isError}
+        error={error}
+        isEmpty={industryDistribution.length === 0}
+        emptyMessage="No industries yet."
+        className="min-h-[200px] p-6"
+      >
       <CardContent className="space-y-4">
         {sorted.map((industry, i) => {
           const pct = total > 0 ? (industry.value / total) * 100 : 0;
@@ -35,6 +46,7 @@ export function TopIndustriesCard() {
           );
         })}
       </CardContent>
+      </AsyncContent>
     </Card>
   );
 }

@@ -26,9 +26,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
+    // `suppressHydrationWarning` is required by next-themes: its pre-paint
+    // script sets the theme class on <html> before React hydrates, so the
+    // server-rendered class list never matches the client's. It suppresses the
+    // warning for this element's attributes only — not for its subtree.
     <html
       lang="en"
-      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <Providers>

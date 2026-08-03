@@ -1,36 +1,57 @@
+"use client";
+
 import { Database, Download, Search, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { dashboardStats } from "@/lib/mock-data";
-
-const USAGE = [
-  {
-    icon: Database,
-    label: "API Credits",
-    used: dashboardStats.creditsTotal - dashboardStats.creditsRemaining,
-    limit: dashboardStats.creditsTotal,
-  },
-  { icon: Users, label: "Team Seats", used: 6, limit: 20 },
-  { icon: Search, label: "Searches", used: 341, limit: 500 },
-  { icon: Download, label: "Exports", used: 34, limit: 100 },
-];
+import { Skeleton } from "@/components/ui/skeleton";
+import { useUsage } from "@/lib/api/queries";
 
 export function UsageRow() {
+  const { data, isPending } = useUsage();
+
+  // `UsageOut` reports credits *used* against the plan limit, which is exactly
+  // what these tiles show — no inversion needed here.
+  const tiles = [
+    { icon: Database, label: "API Credits", used: data?.credits_used, limit: data?.credits_limit },
+    { icon: Users, label: "Team Seats", used: data?.seats_used, limit: data?.seats_limit },
+    { icon: Search, label: "Searches", used: data?.searches_this_month, limit: null },
+    { icon: Download, label: "Exports", used: data?.exports_this_month, limit: null },
+  ];
+
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      {USAGE.map((u) => {
-        const pct = Math.round((u.used / u.limit) * 100);
+      {tiles.map((tile) => {
+        // An unlimited (or unreported) allowance has no meaningful percentage,
+        // and a zero limit would render NaN%.
+        const pct =
+          tile.limit && tile.limit > 0 && tile.used != null
+            ? Math.min(100, Math.round((tile.used / tile.limit) * 100))
+            : null;
+
         return (
-          <Card key={u.label} className="p-4">
+          <Card key={tile.label} className="p-4">
             <CardContent className="p-0">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <u.icon className="size-4" />
-                {u.label}
+                <tile.icon className="size-4" />
+                {tile.label}
               </div>
-              <p className="mt-2 text-lg font-semibold tabular-nums">
-                {u.used.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">/ {u.limit.toLocaleString()}</span>
-              </p>
-              <Progress value={pct} className="mt-2" />
+              {isPending || tile.used == null ? (
+                <Skeleton className="mt-2 h-7 w-24" />
+              ) : (
+                <p className="mt-2 text-lg font-semibold tabular-nums">
+                  {tile.used.toLocaleString()}
+                  {tile.limit ? (
+                    <span className="text-sm font-normal text-muted-foreground">
+                      {" "}
+                      / {tile.limit.toLocaleString()}
+                    </span>
+                  ) : (
+                    <span className="text-sm font-normal text-muted-foreground"> this month</span>
+                  )}
+                </p>
+              )}
+              {/* The bar only appears where there is a real ceiling to fill. */}
+              {pct !== null ? <Progress value={pct} className="mt-2" /> : null}
             </CardContent>
           </Card>
         );

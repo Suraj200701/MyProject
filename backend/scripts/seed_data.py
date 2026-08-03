@@ -75,13 +75,20 @@ PLANS = [
 # billed per request at a premium, the Indian B2B directories are cheaper
 # per lead, and enrichment-only providers don't source leads at all.
 PROVIDERS = [
+    # --- Implemented lead sources (have a real adapter in services/providers/) ---
     ("Google Places", ProviderCategory.MAPS, "🗺️", "Business discovery & place details", 10000, 2),
     ("Mappls (MapmyIndia)", ProviderCategory.MAPS, "📍", "India-focused maps & POI search", 5000, 1),
+    ("Bing Search", ProviderCategory.SEARCH, "🔎", "Company website discovery via web search", 3000, 1),
+    # No paid dependency — crawls the company's own site, so it costs 1 credit
+    # for the bandwidth/compute rather than for third-party API usage.
+    ("Company Website Search", ProviderCategory.SEARCH, "🌐", "Crawls a company website for contact details", 100000, 1),
+    # --- Catalogue-only: no adapter yet, needs a partner agreement ---
     ("IndiaMART", ProviderCategory.BUSINESS, "🏭", "B2B supplier & manufacturer directory", 2000, 1),
     ("TradeIndia", ProviderCategory.BUSINESS, "🤝", "Trade leads and supplier network", 2000, 1),
     ("LinkedIn Sales Navigator", ProviderCategory.CRM, "💼", "Contact enrichment & company data", 1000, 3),
-    ("OpenAI GPT", ProviderCategory.AI, "✨", "AI summaries & lead scoring", 25000, 0),
     ("JustDial", ProviderCategory.SEARCH, "🔍", "Local business search India", 5000, 1),
+    # --- Enrichment only, never sources leads ---
+    ("OpenAI GPT", ProviderCategory.AI, "✨", "AI summaries & lead scoring", 25000, 0),
 ]
 
 

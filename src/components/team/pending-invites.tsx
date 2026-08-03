@@ -6,12 +6,25 @@ import { Mail } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { PENDING_INVITES } from "@/components/team/mock-data";
+import { useResendInvitation, useRevokeInvitation, useTeamInvitations } from "@/lib/api/queries";
+import { toPendingInvite } from "@/components/team/adapters";
 
 export function PendingInvites() {
-  const [invites, setInvites] = React.useState(PENDING_INVITES);
+  const { data, isPending } = useTeamInvitations();
+  const resend = useResendInvitation();
+  const revoke = useRevokeInvitation();
 
-  if (invites.length === 0) return null;
+  const invites = React.useMemo(
+    // The API returns the full invitation history; this card is specifically
+    // about the ones still awaiting a response.
+    () => (data ?? []).filter((invitation) => invitation.status === "pending").map(toPendingInvite),
+    [data],
+  );
+
+  // Unchanged behaviour: the card is absent rather than empty when there is
+  // nothing pending. While loading, "nothing pending" is not yet known, so it
+  // stays hidden instead of flashing an empty card.
+  if (isPending || invites.length === 0) return null;
 
   return (
     <Card>
@@ -30,16 +43,29 @@ export function PendingInvites() {
                 Sent {invite.sentAt} · <Badge variant="outline" className="ml-0.5">{invite.role}</Badge>
               </p>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => toast.success(`Invite resent to ${invite.email}`)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={resend.isPending}
+              onClick={() =>
+                resend.mutate(invite.id, {
+                  onSuccess: () => toast.success(`Invite resent to ${invite.email}`),
+                  onError: (error) => toast.error(error.message),
+                })
+              }
+            >
               Resend
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                setInvites((prev) => prev.filter((i) => i.id !== invite.id));
-                toast.success("Invite cancelled");
-              }}
+              disabled={revoke.isPending}
+              onClick={() =>
+                revoke.mutate(invite.id, {
+                  onSuccess: () => toast.success("Invite cancelled"),
+                  onError: (error) => toast.error(error.message),
+                })
+              }
             >
               Cancel
             </Button>

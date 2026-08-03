@@ -1,8 +1,11 @@
+"use client";
+
 import { ArrowUpRight, Star } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { mockLeads } from "@/lib/mock-data";
+import { useLeads } from "@/lib/api/queries";
+import { AsyncContent, SkeletonRows } from "@/components/shared/async-content";
 
 function scoreVariant(score: number): "success" | "primary" | "warning" {
   if (score >= 80) return "success";
@@ -11,7 +14,13 @@ function scoreVariant(score: number): "success" | "primary" | "warning" {
 }
 
 export function HighValueLeads() {
-  const topLeads = [...mockLeads].sort((a, b) => b.leadScore - a.leadScore).slice(0, 5);
+  // Sorted and limited server-side rather than fetching every lead to slice five.
+  const { data, isPending, isError, error } = useLeads({
+    page_size: 5,
+    sort_by: "lead_score",
+    sort_order: "desc",
+  });
+  const topLeads = data?.items ?? [];
 
   return (
     <Card className="glass overflow-hidden">
@@ -21,6 +30,15 @@ export function HighValueLeads() {
         </div>
         <CardTitle>High Value Leads</CardTitle>
       </CardHeader>
+      <AsyncContent
+        isPending={isPending}
+        isError={isError}
+        error={error}
+        isEmpty={topLeads.length === 0}
+        emptyMessage="No leads yet — run a search or import a CSV."
+        className="min-h-[180px] p-5"
+        skeleton={<SkeletonRows rows={4} />}
+      >
       <div className="flex flex-col divide-y divide-border p-5 pt-3">
         {topLeads.map((lead) => (
           <Link
@@ -41,6 +59,7 @@ export function HighValueLeads() {
           </Link>
         ))}
       </div>
+      </AsyncContent>
       <div className="border-t border-border px-5 py-3">
         <Link href="/dashboard/leads" className="text-xs font-medium text-primary hover:underline">
           View all leads

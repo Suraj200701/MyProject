@@ -41,6 +41,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,6 +51,11 @@ from models.billing import CreditWallet, Transaction
 from models.enums import TransactionType
 from models.search import ApiProvider
 from utils.exceptions import InsufficientCreditsError
+
+if TYPE_CHECKING:
+    # Type-only: importing the ORM model at runtime would create an import cycle
+    # (models.user -> ... -> services), and this module only reads one attribute.
+    from models.user import User
 
 logger = logging.getLogger("leadmaster.usage")
 
@@ -117,6 +123,36 @@ async def get_balance(db: AsyncSession, organization_id: uuid.UUID) -> int:
     return (await db.execute(stmt)).scalar_one_or_none() or 0
 
 
+# --- Metering exemption ---------------------------------------------------
+
+
+def is_metering_exempt(user: "User | None" = None) -> bool:
+    """Whether this actor bypasses credit metering entirely.
+
+    Exempt when **any** of these hold:
+
+    * Metering is off globally (`CREDIT_METERING_ENABLED=false`), or the process
+      is running in development with `CREDIT_METERING_DISABLED_IN_DEVELOPMENT`
+      left at its default. Both are folded into `settings.credit_metering_active`.
+    * The actor is a **superadmin**. Superadmins are platform operators, not
+      tenants — they have no meaningful wallet of their own and are frequently
+      acting inside someone else's organization, so charging that organization
+      for an operator's search would corrupt the customer's usage figures as well
+      as blocking the operator.
+
+    Exemption is total: no balance check, no debit, no ledger entry. It is *not*
+    "charge zero" — an operator's activity should leave the tenant's billing
+    history untouched.
+
+    Every other user follows the normal reserve/settle path unchanged.
+    """
+    if not settings.credit_metering_active:
+        return True
+    if user is not None and getattr(user, "is_superadmin", False):
+        return True
+    return False
+
+
 # --- Cost estimation ------------------------------------------------------
 
 
@@ -171,16 +207,23 @@ async def reserve_credits(
     organization_id: uuid.UUID,
     amount: int,
     description: str,
+    *,
+    exempt: bool = False,
 ) -> CreditReservation:
     """Atomically debits `amount` credits up front.
 
     Raises `InsufficientCreditsError` (HTTP 402) when the balance cannot cover
     the amount, leaving the balance untouched.
 
+    Pass `exempt=True` (from `is_metering_exempt`) to skip the balance check and
+    the debit entirely — used for superadmins and for development. An exempt
+    reservation has `amount == 0`, so the matching settle/release calls become
+    no-ops and callers need no branching of their own.
+
     Does **not** commit — the reservation participates in the caller's
     transaction so a rollback also unwinds the debit.
     """
-    if not settings.CREDIT_METERING_ENABLED or amount <= 0:
+    if exempt or not settings.credit_metering_active or amount <= 0:
         return CreditReservation(organization_id=organization_id, amount=0, description=description)
 
     wallet = await _lock_wallet(db, organization_id)
@@ -287,6 +330,8 @@ async def charge_credits(
     organization_id: uuid.UUID,
     amount: int,
     description: str,
+    *,
+    exempt: bool = False,
 ) -> int:
     """Single-shot debit for operations with a known fixed cost.
 
@@ -294,6 +339,6 @@ async def charge_credits(
     same amount — used where the cost is knowable in advance (e.g. a website
     scan) and no reconciliation step is needed.
     """
-    reservation = await reserve_credits(db, organization_id, amount, description)
+    reservation = await reserve_credits(db, organization_id, amount, description, exempt=exempt)
     reservation.settled = True
     return reservation.amount

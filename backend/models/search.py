@@ -9,7 +9,14 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
-from models.enums import ExportFormat, ExportStatus, ProviderCategory, ProviderStatus, SearchStatus
+from models.enums import (
+    ExportFormat,
+    ExportResource,
+    ExportStatus,
+    ProviderCategory,
+    ProviderStatus,
+    SearchStatus,
+)
 
 
 class ApiProvider(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -115,3 +122,29 @@ class Export(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     status: Mapped[ExportStatus] = mapped_column(default=ExportStatus.PROCESSING, nullable=False)
     storage_path: Mapped[str | None] = mapped_column(String(500))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # --- Export Center additions (additive; every existing column above is
+    # untouched, and all four carry defaults so pre-existing rows stay valid) ---
+
+    # What the file contains. Defaults to LEADS because that is what every row
+    # written before this column existed was.
+    # NOTE: the server default is the enum *member name* ("LEADS"), not its
+    # value ("leads"). This codebase maps Python enums with SQLAlchemy's default
+    # behaviour, so the Postgres type's labels are the member names — the
+    # existing `exportformat` type is likewise CSV/EXCEL/PDF/JSON, not
+    # csv/excel/pdf/json. A lowercase default here is rejected by the type.
+    resource: Mapped[ExportResource] = mapped_column(
+        default=ExportResource.LEADS, server_default=ExportResource.LEADS.name, nullable=False, index=True
+    )
+    # The request that produced this export (scope, filters, chosen columns).
+    # Kept so history can show *what* was exported, and so a background job can
+    # re-run the same selection after the request has ended.
+    filters: Mapped[dict | None] = mapped_column(JSONB)
+    # Populated only when status is FAILED — a failure with no reason is a
+    # support ticket rather than a diagnosis.
+    error_message: Mapped[str | None] = mapped_column(String(500))
+    # Download audit trail: exports can carry the whole lead database, so how
+    # often a file was fetched is worth recording.
+    download_count: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )

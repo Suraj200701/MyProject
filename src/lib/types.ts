@@ -43,7 +43,8 @@ export interface SearchHistoryItem {
   location: string;
   results: number;
   createdAt: string;
-  status: "completed" | "running" | "failed";
+  /** "skipped" = a provider never ran (no credentials); not a failure. */
+  status: "completed" | "running" | "failed" | "skipped";
 }
 
 export interface NotificationItem {

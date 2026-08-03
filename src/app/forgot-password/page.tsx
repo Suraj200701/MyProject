@@ -10,24 +10,32 @@ import { AuthShell, AuthFooterLink } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { errorMessage } from "@/lib/api/client";
+import { authApi } from "@/lib/api/endpoints";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [sent, setSent] = React.useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!email) {
       toast.error("Please enter your email address.");
       return;
     }
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await authApi.forgotPassword(email.trim());
+      // The endpoint answers the same way whether or not the address exists, so
+      // this screen must not reveal it either — always show the sent state.
       setSent(true);
       toast.success("Reset link sent.");
-    }, 1100);
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

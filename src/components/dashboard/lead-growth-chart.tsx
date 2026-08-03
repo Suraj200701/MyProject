@@ -4,16 +4,20 @@ import { useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { leadGrowthData } from "@/lib/mock-data";
+import { useLeadGrowth } from "@/lib/api/queries";
+import { AsyncContent } from "@/components/shared/async-content";
 import { ChartTooltip } from "@/components/dashboard/chart-tooltip";
 
 const periods = ["6M", "3M", "1M"] as const;
 
 export function LeadGrowthChart() {
   const [period, setPeriod] = useState<(typeof periods)[number]>("6M");
+  // The endpoint returns the last 6 months; the tabs slice that window
+  // client-side exactly as before.
+  const { data: growth, isPending, isError, error } = useLeadGrowth();
 
-  const data =
-    period === "3M" ? leadGrowthData.slice(-3) : period === "1M" ? leadGrowthData.slice(-1) : leadGrowthData;
+  const series = growth ?? [];
+  const data = period === "3M" ? series.slice(-3) : period === "1M" ? series.slice(-1) : series;
 
   return (
     <Card className="glass overflow-hidden">
@@ -33,6 +37,14 @@ export function LeadGrowthChart() {
         </Tabs>
       </CardHeader>
       <div className="h-72 w-full px-2 pb-4 pt-4 sm:px-4">
+        <AsyncContent
+          isPending={isPending}
+          isError={isError}
+          error={error}
+          isEmpty={data.length === 0}
+          emptyMessage="No lead activity in this period yet."
+          className="h-full"
+        >
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
             <defs>
@@ -79,6 +91,7 @@ export function LeadGrowthChart() {
             />
           </AreaChart>
         </ResponsiveContainer>
+        </AsyncContent>
       </div>
     </Card>
   );

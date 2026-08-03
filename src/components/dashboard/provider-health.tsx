@@ -1,8 +1,11 @@
+"use client";
+
 import { Plug } from "lucide-react";
 import Link from "next/link";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { apiProviders } from "@/lib/mock-data";
+import { useProviders } from "@/lib/api/queries";
+import { AsyncContent, SkeletonRows } from "@/components/shared/async-content";
 import type { ApiProvider } from "@/lib/types";
 
 const statusColor: Record<ApiProvider["status"], string> = {
@@ -18,6 +21,9 @@ const statusLabel: Record<ApiProvider["status"], string> = {
 };
 
 export function ProviderHealth() {
+  const { data, isPending, isError, error } = useProviders();
+  const apiProviders = data ?? [];
+
   return (
     <Card className="glass overflow-hidden">
       <CardHeader className="flex-row items-center gap-2 space-y-0">
@@ -26,6 +32,15 @@ export function ProviderHealth() {
         </div>
         <CardTitle>Provider Health</CardTitle>
       </CardHeader>
+      <AsyncContent
+        isPending={isPending}
+        isError={isError}
+        error={error}
+        isEmpty={apiProviders.length === 0}
+        emptyMessage="No providers configured."
+        className="min-h-[160px] p-5"
+        skeleton={<SkeletonRows rows={4} />}
+      >
       <div className="grid grid-cols-1 gap-2 p-5 pt-3 sm:grid-cols-2">
         {apiProviders.map((provider) => (
           <div
@@ -46,6 +61,7 @@ export function ProviderHealth() {
           </div>
         ))}
       </div>
+      </AsyncContent>
       <div className="border-t border-border px-5 py-3">
         <Link href="/dashboard/api-manager" className="text-xs font-medium text-primary hover:underline">
           Manage providers

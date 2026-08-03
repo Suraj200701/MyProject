@@ -8,7 +8,12 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_membership, get_current_organization, get_current_user
+from api.deps import (
+    get_current_membership,
+    get_current_organization,
+    get_current_user,
+    require_org_role,
+)
 from database.session import get_db
 from models.billing import Invoice, Payment, SubscriptionPlan, Transaction
 from models.enums import RoleName
@@ -17,6 +22,7 @@ from payment import stripe_client
 from schemas.billing import (
     CheckoutSessionOut,
     CheckoutSessionRequest,
+    CreditPackOut,
     CreditTopupRequest,
     InvoiceOut,
     PaymentOut,
@@ -32,9 +38,6 @@ from utils.pagination import Page, PageMeta, PaginationParams, pagination_params
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
 
-_require_billing_manager = require_org_role = None  # placeholder replaced below to avoid unused-import lint noise
-from api.deps import require_org_role  # noqa: E402  (kept local for clarity next to its usage)
-
 
 @router.get("/plans", response_model=list[PlanOut])
 async def list_plans(
@@ -45,6 +48,16 @@ async def list_plans(
     stmt = select(SubscriptionPlan).where(SubscriptionPlan.is_active.is_(True)).order_by(SubscriptionPlan.price_cents)
     plans = (await db.execute(stmt)).scalars().all()
     return [PlanOut.model_validate(p) for p in plans]
+
+
+@router.get("/credit-packs", response_model=list[CreditPackOut])
+async def list_credit_packs(user=Depends(get_current_user)):
+    """The credit top-up catalogue, priced server-side.
+
+    Exposed so the billing UI renders the same packs `POST /billing/credits/checkout`
+    will accept, instead of a hardcoded copy that can drift from the real prices.
+    """
+    return billing_service.list_credit_packs()
 
 
 @router.get("/subscription", response_model=SubscriptionOut | None)

@@ -24,6 +24,11 @@ DOCS_DIR = BASE_DIR / "docs"
 POSTMAN_DIR = DOCS_DIR / "postman"
 OPENAPI_URL = "http://127.0.0.1:8000/openapi.json"
 
+# Origin only — OpenAPI paths already carry the /api/v1 prefix. Setting this
+# to ".../api/v1" made every generated Postman request resolve to
+# /api/v1/api/v1/... and 404.
+POSTMAN_BASE_URL = "http://localhost:8000"
+
 SAMPLE_UUID = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
 
 # Field-name heuristics for realistic example values (used when the schema
@@ -66,7 +71,7 @@ FIELD_EXAMPLES: dict[str, Any] = {
     "address": "MG Road, Pune, Maharashtra",
     "amount_cents": 24900,
     "revenue_band": "$1M-$5M",
-    "gst_number": "27ABCDE1234F1Z5",
+    "gst_number": "27AAPFU0939F1ZV",
 }
 
 NUMERIC_FIELD_EXAMPLES: dict[str, float] = {
@@ -438,7 +443,10 @@ def main() -> None:
             "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
         },
         "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}", "type": "string"}]},
-        "variable": [{"key": "base_url", "value": "{{base_url}}", "type": "string"}],
+        # `base_url` is the ORIGIN only. Request paths below are the full OpenAPI
+        # paths and already begin with /api/v1, so a base_url that also ended in
+        # /api/v1 would resolve every request to /api/v1/api/v1/... and 404.
+        "variable": [{"key": "base_url", "value": POSTMAN_BASE_URL, "type": "string"}],
         "item": [],
     }
 
@@ -533,7 +541,7 @@ def main() -> None:
         collection["item"].append(folder)
 
     collection["variable"] = [
-        {"key": "base_url", "value": "http://localhost:8000/api/v1", "type": "string"},
+        {"key": "base_url", "value": POSTMAN_BASE_URL, "type": "string"},
         {"key": "access_token", "value": "", "type": "string"},
         {"key": "refresh_token", "value": "", "type": "string"},
     ]
@@ -549,7 +557,7 @@ def main() -> None:
         "id": str(uuid.uuid4()),
         "name": "LeadMaster AI — Local",
         "values": [
-            {"key": "base_url", "value": "http://localhost:8000/api/v1", "enabled": True},
+            {"key": "base_url", "value": POSTMAN_BASE_URL, "enabled": True},
             {"key": "access_token", "value": "", "enabled": True},
             {"key": "refresh_token", "value": "", "enabled": True},
             {"key": "organization_id", "value": "", "enabled": True},

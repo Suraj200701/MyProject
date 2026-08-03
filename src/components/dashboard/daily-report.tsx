@@ -1,16 +1,28 @@
+"use client";
+
 import { ArrowUpRight, FileBarChart } from "lucide-react";
 import Link from "next/link";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { dashboardStats } from "@/lib/mock-data";
-
-const metrics = [
-  { label: "New leads today", value: dashboardStats.todayLeads.toLocaleString() },
-  { label: "Searches run", value: "18" },
-  { label: "Conversion rate", value: `${dashboardStats.conversionRate}%` },
-  { label: "Credits used", value: `${dashboardStats.creditsTotal - dashboardStats.creditsRemaining}` },
-];
+import { AsyncContent } from "@/components/shared/async-content";
+import { useDashboardStats } from "@/lib/api/queries";
 
 export function DailyReport() {
+  const { data: stats, isPending, isError, error } = useDashboardStats();
+
+  // "Searches run" was previously hardcoded to 18; it now comes from the same
+  // stats payload as everything else on this card.
+  const metrics = stats
+    ? [
+        { label: "New leads today", value: stats.todayLeads.toLocaleString() },
+        { label: "Searches run", value: stats.searchCount.toLocaleString() },
+        { label: "Conversion rate", value: `${stats.conversionRate}%` },
+        {
+          label: "Credits used",
+          value: Math.max(0, stats.creditsTotal - stats.creditsRemaining).toLocaleString(),
+        },
+      ]
+    : [];
+
   return (
     <Card className="glass-strong glow-ring relative overflow-hidden">
       <div className="pointer-events-none absolute -right-10 -top-10 size-40 rounded-full bg-primary/20 blur-3xl" />
@@ -20,14 +32,21 @@ export function DailyReport() {
         </div>
         <CardTitle>Today at a Glance</CardTitle>
       </CardHeader>
-      <div className="grid grid-cols-2 gap-4 p-5 pt-3">
-        {metrics.map((metric) => (
-          <div key={metric.label}>
-            <p className="text-lg font-semibold tracking-tight">{metric.value}</p>
-            <p className="text-xs text-muted-foreground">{metric.label}</p>
-          </div>
-        ))}
-      </div>
+      <AsyncContent
+        isPending={isPending}
+        isError={isError}
+        error={error}
+        className="min-h-[140px] p-5"
+      >
+        <div className="grid grid-cols-2 gap-4 p-5 pt-3">
+          {metrics.map((metric) => (
+            <div key={metric.label}>
+              <p className="text-lg font-semibold tracking-tight">{metric.value}</p>
+              <p className="text-xs text-muted-foreground">{metric.label}</p>
+            </div>
+          ))}
+        </div>
+      </AsyncContent>
       <div className="border-t border-border px-5 py-3">
         <Link
           href="/dashboard/intelligence"

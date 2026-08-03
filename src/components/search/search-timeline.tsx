@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { History, Search, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { History, Search, Loader2, CheckCircle2, XCircle, MinusCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { SearchHistoryItem } from "@/lib/types";
@@ -34,6 +34,15 @@ function statusBadge(status: SearchHistoryItem["status"] | "running") {
         <Badge variant="danger">
           <XCircle className="size-3" />
           Failed
+        </Badge>
+      );
+    // A provider with no credentials never ran. Rendering it as a failure made
+    // a working search look broken, so it gets its own neutral badge.
+    case "skipped":
+      return (
+        <Badge variant="outline">
+          <MinusCircle className="size-3" />
+          Skipped
         </Badge>
       );
   }

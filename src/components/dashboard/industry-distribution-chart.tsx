@@ -2,7 +2,8 @@
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { industryDistribution } from "@/lib/mock-data";
+import { useIndustryDistribution } from "@/lib/api/queries";
+import { AsyncContent } from "@/components/shared/async-content";
 import { ChartTooltip } from "@/components/dashboard/chart-tooltip";
 
 const COLORS = [
@@ -15,6 +16,8 @@ const COLORS = [
 ];
 
 export function IndustryDistributionChart() {
+  const { data, isPending, isError, error } = useIndustryDistribution();
+  const industryDistribution = data ?? [];
   const total = industryDistribution.reduce((sum, d) => sum + d.value, 0);
 
   return (
@@ -23,6 +26,14 @@ export function IndustryDistributionChart() {
         <CardTitle>Industry Distribution</CardTitle>
         <p className="mt-1 text-xs text-muted-foreground">Share of leads by industry vertical</p>
       </CardHeader>
+      <AsyncContent
+        isPending={isPending}
+        isError={isError}
+        error={error}
+        isEmpty={industryDistribution.length === 0}
+        emptyMessage="No industry data yet — run a search to populate this."
+        className="h-[264px] p-5"
+      >
       <div className="flex flex-col items-center gap-4 p-5 sm:flex-row">
         <div className="h-56 w-full max-w-[220px] shrink-0">
           <ResponsiveContainer width="100%" height="100%">
@@ -54,12 +65,15 @@ export function IndustryDistributionChart() {
               />
               <span className="truncate text-foreground/90">{entry.name}</span>
               <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
-                {Math.round((entry.value / total) * 100)}%
+                {/* Guarded: a dataset whose values are all zero passes the
+                    non-empty check above but makes `total` 0, rendering "NaN%". */}
+                {total > 0 ? Math.round((entry.value / total) * 100) : 0}%
               </span>
             </div>
           ))}
         </div>
       </div>
+      </AsyncContent>
     </Card>
   );
 }

@@ -1,39 +1,39 @@
-"""Lead search orchestration and the website scanner.
+"""Lead search orchestration and the website scanner — real data only.
 
-IMPORTANT — placeholder data-generation, clearly scoped:
-This backend has no real third-party search-provider credentials (Google
-Places, IndiaMART, JustDial, ...) or web-crawling infrastructure — those
-are paid integrations the user hasn't configured yet. Rather than return
-literal mock JSON, both `run_search()` and `scan_website()` below
-synthesize plausible results and persist them as REAL rows in the
-database via the ORM (real Lead/Company/Search/WebsiteScan records,
-genuinely queryable afterward) — this is a deliberate, documented stand-in
-for the real provider calls, not a mock API response. In production, each
-connected `ApiProvider` would be called via its real API instead:
-  - Google Places  -> Places API Text Search (https://maps.googleapis.com/maps/api/place/textsearch/json)
-  - IndiaMART/TradeIndia/JustDial -> their respective partner/business APIs
-  - Website Scanner -> a real crawler using `services/safe_http.safe_fetch`
-    (already built and SSRF-hardened) to fetch the target site, then
-    extracting emails/phones/GST/social links from the actual page content
-    instead of the deterministic-hash approach here.
+All placeholder/synthetic lead generation has been removed. Every lead
+persisted by this module originates from a real source:
 
-INFRASTRUCTURE NOW LIVE (this is real, not placeholder):
-  * **Credit metering** — both operations reserve credits up front via
-    `services/usage_service.py` and settle against actual usage, so a caller
-    without credits is refused with HTTP 402 *before* any work starts. This
-    is what makes it safe to plug in paid providers later: the spend ceiling
-    already exists.
-  * **SSRF-hardened URL validation** — `scan_website()` puts every
-    user-supplied URL through `utils/url_guard.resolve_and_validate()`
-    (scheme/port/hostname policy, DNS resolution, private/loopback/
-    link-local/cloud-metadata IP rejection) and persists the *normalized*
-    URL. The guard runs today even though nothing is fetched yet, so the
-    validation contract is established and tested before real fetching
-    lands.
+  * **Google Places API (New)** — `services/providers/google_places.py`
+  * **Mappls (MapmyIndia)** — `services/providers/mappls.py`
+  * **Bing Web Search** — `services/providers/bing_search.py`
+  * **Company Website Search** — `services/providers/website_search.py`
+    (real crawl, no paid API)
+  * **CSV import** and **manual entry** — `services/lead_import.py`,
+    `POST /leads`
+
+Pipeline
+--------
+    resolve configured providers
+      -> reserve credits (402 if the balance can't cover the worst case)
+      -> query providers concurrently, isolating per-provider failures
+      -> deduplicate (GSTIN -> domain -> phone -> name+city)
+      -> score (LLM when configured, signal-based otherwise)
+      -> persist Company/Lead rows
+      -> settle credits against what was actually produced
+
+Behaviour when nothing is configured
+------------------------------------
+A search with no configured provider completes with `results_count = 0` and one
+`SearchProviderRun` per provider carrying a real reason (SKIPPED/FAILED). It
+does **not** fabricate leads, and it does not consume credits, because
+unconfigured providers are excluded before the reservation is calculated. The
+API contract is unchanged — callers still get a 201 and a `SearchOut`.
 """
 
-import hashlib
-import random
+from __future__ import annotations
+
+import asyncio
+import logging
 import time
 import uuid
 from datetime import UTC, datetime
@@ -47,37 +47,66 @@ from models.lead import Company, Lead
 from models.search import ApiProvider, Search, SearchProviderRun, WebsiteScan
 from schemas.search import SearchCreate, WebsiteScanCreate
 from services import usage_service
+from services.enrichment import dedup, scoring
+from services.enrichment import extractors
+from services.providers.base import (
+    NormalizedLead,
+    ProviderRunStatus,
+    ProviderSearchResult,
+    SearchQuery,
+)
+from services.providers.registry import resolve_lead_providers
+from services.providers.website_search import build_website_profile
+from services.safe_http import FetchError
 from utils.url_guard import resolve_and_validate
 
-# --- Lead search placeholder generation -----------------------------------
+logger = logging.getLogger("leadmaster.search")
 
-_COMPANY_PREFIXES = ["Apex", "Vertex", "Prime", "Nova", "Summit", "Bluewire", "Titan", "Orbit", "Meridian", "Ironclad"]
-_COMPANY_SUFFIXES = ["Electricals", "Automation", "Controls", "Power Systems", "Switchgear", "Panels", "Engineering", "Industries"]
-_CITIES = [
-    ("Mumbai", "India"), ("Pune", "India"), ("Ahmedabad", "India"),
-    ("Dubai", "UAE"), ("Singapore", "Singapore"), ("Austin", "United States"),
-]
-_FIRST_NAMES = ["Rohan", "Priya", "Amit", "Sara", "Vikram", "Neha", "Arjun", "Divya"]
-_LAST_NAMES = ["Mehta", "Shah", "Kapoor", "Reddy", "Nair", "Iyer", "Verma", "Singh"]
+# Provider-run status mapping. SKIPPED is its own state: a provider without
+# credentials never ran, and reporting that as FAILED made every search look
+# like several broken integrations (see migration 3a6fd6f68951).
+_RUN_STATUS = {
+    ProviderRunStatus.COMPLETED: SearchStatus.COMPLETED,
+    ProviderRunStatus.FAILED: SearchStatus.FAILED,
+    ProviderRunStatus.SKIPPED: SearchStatus.SKIPPED,
+}
 
 
-async def run_search(db: AsyncSession, organization_id: uuid.UUID, user_id: uuid.UUID, data: SearchCreate) -> Search:
-    """Runs a lead search, metered against the organization's credit balance.
+async def run_search(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    data: SearchCreate,
+    *,
+    metering_exempt: bool = False,
+) -> Search:
+    """Runs a metered, deduplicated, scored search across configured providers.
 
-    Order of operations matters: providers are resolved and credits reserved
-    **before** the `Search` row is created, so a caller who cannot pay gets a
-    clean 402 without leaving an orphaned RUNNING search behind.
+    `metering_exempt` comes from `usage_service.is_metering_exempt(user)` at the
+    route layer, where the authenticated `User` is available. When set, no
+    balance check happens and no credits are debited — see that helper for who
+    qualifies and why.
     """
-    providers = (
-        await db.execute(select(ApiProvider).where(ApiProvider.category.in_(["Search", "Business", "Maps"])))
-    ).scalars().all()
-    providers = list(providers)
+    provider_rows = list(
+        (
+            await db.execute(
+                select(ApiProvider).where(ApiProvider.connected.is_(True))
+            )
+        ).scalars().all()
+    )
+    # `connected` is the operator's on/off switch; if nothing has been switched
+    # on yet, fall back to the whole catalogue so a freshly-configured API key
+    # works without also having to flip the flag.
+    if not provider_rows:
+        provider_rows = list((await db.execute(select(ApiProvider))).scalars().all())
 
-    # Reserve the worst case up front (see usage_service for why pessimistic).
-    # Raises InsufficientCreditsError -> HTTP 402 if the balance can't cover it.
-    estimate = usage_service.estimate_search_cost(providers)
+    resolved = resolve_lead_providers(provider_rows)
+    unconfigured = [row for row in provider_rows if row.name not in {r.name for r, _ in resolved}]
+
+    # Only configured providers can incur cost, so only they are reserved for.
+    estimate = usage_service.estimate_search_cost([row for row, _ in resolved])
     reservation = await usage_service.reserve_credits(
-        db, organization_id, estimate, f"Lead search: {data.query[:120]}"
+        db, organization_id, estimate, f"Lead search: {data.query[:120]}", exempt=metering_exempt
     )
 
     try:
@@ -92,226 +121,344 @@ async def run_search(db: AsyncSession, organization_id: uuid.UUID, user_id: uuid
         db.add(search)
         await db.flush()
 
-        rng = random.Random(f"{data.query}:{search.id}")
-        total_results = 0
-        # Tracks leads actually persisted per provider so the settlement
-        # charges for real output rather than the padded `found` figure.
-        billable_by_provider: dict[uuid.UUID, int] = {}
+        query = SearchQuery(
+            query=data.query,
+            location=data.location,
+            industry=data.industry,
+            country=data.country,
+            max_results=max(1, settings.SEARCH_MAX_RESULTS_PER_PROVIDER),
+        )
+
+        results = await _query_providers(resolved, query)
+
+        # Record every provider that couldn't run, so the UI can explain why a
+        # search returned little rather than looking silently broken.
         now = datetime.now(UTC)
-
-        for provider in providers:
-            found = rng.randint(8, 45)
-            run = SearchProviderRun(
-                search_id=search.id,
-                provider_id=provider.id,
-                status=SearchStatus.COMPLETED,
-                results_found=found,
-                started_at=now,
-                completed_at=now,
-            )
-            db.add(run)
-
-            provider.usage_count += found
-            persisted = 0
-            # Honour the configured cap rather than a hardcoded number, so the
-            # credits reserved by estimate_search_cost() match what can
-            # actually be produced. Previously this was a literal 8 while the
-            # estimate used the setting, which meant a search reserved more
-            # than it could ever consume.
-            per_provider_cap = max(0, settings.SEARCH_MAX_RESULTS_PER_PROVIDER)
-            for _ in range(min(found, per_provider_cap)):
-                company_name = f"{rng.choice(_COMPANY_PREFIXES)} {rng.choice(_COMPANY_SUFFIXES)}"
-                city, country = rng.choice(_CITIES)
-                if data.country and data.country != "all":
-                    country = data.country
-
-                company = Company(
-                    name=company_name,
-                    industry=data.industry or "Industrial Automation",
-                    company_type=rng.choice(["Private Ltd", "LLP", "Partnership"]),
-                    city=data.location or city,
-                    country=country,
-                    rating=round(rng.uniform(3.0, 5.0), 1),
+        for row in unconfigured:
+            db.add(
+                SearchProviderRun(
+                    search_id=search.id,
+                    provider_id=row.id,
+                    # Not configured, or not a lead source at all — it never ran.
+                    status=SearchStatus.SKIPPED,
+                    results_found=0,
+                    started_at=now,
+                    completed_at=now,
                 )
-                db.add(company)
-                await db.flush()
+            )
 
-                score = rng.randint(40, 98)
-                lead = Lead(
+        all_leads: list[NormalizedLead] = []
+        provider_by_name = {row.name: row for row, _ in resolved}
+
+        for result in results:
+            row = provider_by_name.get(result.provider_name)
+            db.add(
+                SearchProviderRun(
+                    search_id=search.id,
+                    provider_id=row.id if row else None,
+                    status=_RUN_STATUS[result.status],
+                    results_found=result.count,
+                    started_at=now,
+                    completed_at=datetime.now(UTC),
+                )
+            )
+            if row is not None:
+                # Real call counts and latency, only for calls actually made.
+                if result.status is not ProviderRunStatus.SKIPPED:
+                    row.usage_count += max(1, result.count)
+                if result.latency_ms:
+                    row.latency_ms = result.latency_ms
+            all_leads.extend(result.leads)
+
+        dedup_result = await dedup.deduplicate(db, organization_id, all_leads)
+        unique_leads = dedup_result.unique
+
+        scores = await scoring.score_leads(unique_leads, data.industry)
+
+        billable_by_provider: dict[uuid.UUID, int] = {}
+        for lead, (score, summary) in zip(unique_leads, scores):
+            row = provider_by_name.get(lead.source_provider or "")
+            company = await _get_or_create_company(db, lead)
+            db.add(
+                Lead(
                     organization_id=organization_id,
                     company_id=company.id,
-                    contact_name=f"{rng.choice(_FIRST_NAMES)} {rng.choice(_LAST_NAMES)}",
-                    email=f"contact@{company_name.lower().replace(' ', '')}.com",
-                    phone=f"+91 {rng.randint(70000, 99999)} {rng.randint(10000, 99999)}",
+                    contact_name=lead.contact_name,
+                    email=lead.email,
+                    phone=lead.phone,
                     lead_score=score,
                     status="new",
-                    tags=[data.industry] if data.industry else [],
-                    provider_id=provider.id,
+                    tags=lead.tags or None,
+                    provider_id=row.id if row else None,
                     search_id=search.id,
                     created_by_id=user_id,
-                    ai_summary=f"{company_name} is a {'high-intent' if score > 75 else 'moderate-intent'} lead discovered via {provider.name}.",
+                    ai_summary=summary,
                 )
-                db.add(lead)
-                persisted += 1
-
-            billable_by_provider[provider.id] = persisted
-            total_results += found
+            )
+            if row is not None:
+                billable_by_provider[row.id] = billable_by_provider.get(row.id, 0) + 1
 
         search.status = SearchStatus.COMPLETED
-        search.results_count = total_results
+        search.results_count = len(unique_leads)
         search.completed_at = datetime.now(UTC)
 
-        # Settle before commit so the wallet adjustment and the search land in
-        # the same transaction — a crash between them can't bill for nothing.
-        actual_cost = usage_service.calculate_search_actual_cost(billable_by_provider, providers)
+        actual_cost = usage_service.calculate_search_actual_cost(
+            billable_by_provider, [row for row, _ in resolved]
+        )
         await usage_service.settle_reservation(db, reservation, actual_cost)
 
         await db.commit()
     except Exception:
-        # The reservation was flushed into THIS transaction, never committed
-        # separately — so rolling back is itself the refund. Calling
-        # release_reservation() here would credit the balance a second time
-        # and hand out free credits on every failed search.
-        #
-        # A side effect worth knowing: `SELECT ... FOR UPDATE` holds the wallet
-        # lock until this transaction ends, so concurrent searches for one
-        # organization serialize rather than racing. That is deliberate — it
-        # makes the balance check authoritative and caps concurrent spend.
+        # The reservation is pending in this transaction, so rolling back is
+        # itself the refund — calling release_reservation() here would credit
+        # the balance twice. (See services/usage_service.release_reservation.)
         await db.rollback()
         raise
 
-    stmt = (
-        select(Search)
-        .where(Search.id == search.id)
-        .execution_options(populate_existing=True)
-    )
-    refreshed = (await db.execute(stmt)).scalar_one()
+    refreshed = (
+        await db.execute(
+            select(Search).where(Search.id == search.id).execution_options(populate_existing=True)
+        )
+    ).scalar_one()
     await db.refresh(refreshed, attribute_names=["provider_runs"])
     return refreshed
 
 
-# --- Website scanner (deterministic hash generation, ported from the
-# frontend's src/components/scanner/mock-data.ts so results are stable
-# for a given domain across the whole app) --------------------------------
-#
-# URL normalization previously lived here as a local `_normalize_url` helper.
-# It has been replaced by `utils.url_guard.normalize_url`, which does the same
-# job plus the security checks (scheme/port/credential/hostname validation),
-# so there is exactly one place where a user-supplied URL is interpreted.
+async def _query_providers(resolved, query: SearchQuery) -> list[ProviderSearchResult]:
+    """Queries every provider concurrently, isolating failures.
 
-
-def _seeded_rng(domain: str) -> random.Random:
-    digest = hashlib.sha256(domain.encode()).hexdigest()
-    seed = int(digest[:16], 16)
-    return random.Random(seed)
-
-
-def _slug_company_name(domain: str) -> str:
-    base = domain.split(".")[0] if domain else "company"
-    parts = [p for p in base.replace("_", "-").split("-") if p]
-    return " ".join(p[:1].upper() + p[1:] for p in parts) or "Company"
-
-
-async def scan_website(db: AsyncSession, organization_id: uuid.UUID, user_id: uuid.UUID, data: WebsiteScanCreate) -> WebsiteScan:
-    """Scans a website, metered and SSRF-guarded.
-
-    The URL goes through the full guard (syntax -> hostname policy -> DNS ->
-    IP-range checks) before anything else happens, so an unsafe target is
-    rejected with HTTP 400 and is never charged for. Credits are then reserved
-    before the scan work begins.
-
-    The guard runs even though the report is still generated deterministically
-    rather than fetched — that way the validation contract, its tests, and the
-    stored-URL normalization are all settled before real fetching is added.
+    `return_exceptions=True` means one adapter raising an unexpected error
+    cannot cancel its siblings; it becomes a FAILED run for that provider only.
     """
-    # 1. Validate FIRST — unsafe URLs cost nothing and create no rows.
-    #    Raises UnsafeUrlError (HTTP 400) on anything the guard refuses.
-    validated = await resolve_and_validate(data.url)
-    url, domain = validated.url, validated.hostname
+    if not resolved:
+        return []
 
-    # 2. Reserve credits — raises InsufficientCreditsError (HTTP 402).
+    async def run_one(row: ApiProvider, adapter) -> ProviderSearchResult:
+        try:
+            return await adapter.search(query)
+        except Exception as exc:  # noqa: BLE001 - defensive isolation boundary
+            logger.exception("Provider %s raised unexpectedly", row.name)
+            return ProviderSearchResult(
+                provider_name=row.name,
+                status=ProviderRunStatus.FAILED,
+                error=f"Unexpected error: {type(exc).__name__}",
+            )
+
+    gathered = await asyncio.gather(
+        *(run_one(row, adapter) for row, adapter in resolved), return_exceptions=True
+    )
+
+    results: list[ProviderSearchResult] = []
+    for (row, _adapter), outcome in zip(resolved, gathered):
+        if isinstance(outcome, BaseException):
+            results.append(
+                ProviderSearchResult(
+                    provider_name=row.name,
+                    status=ProviderRunStatus.FAILED,
+                    error=f"Unexpected error: {type(outcome).__name__}",
+                )
+            )
+        else:
+            results.append(outcome)
+    return results
+
+
+async def _get_or_create_company(db: AsyncSession, lead: NormalizedLead) -> Company:
+    """Finds an existing company for this lead or creates one.
+
+    Reuses the dedup fingerprint logic so a company matched by domain isn't
+    duplicated just because its name is spelled differently this time.
+    """
+    domain = dedup.normalize_domain(lead.website)
+    gstin = (lead.gst_number or "").strip().upper()
+
+    if gstin:
+        existing = (
+            await db.execute(select(Company).where(Company.gst_number == gstin).limit(1))
+        ).scalar_one_or_none()
+        if existing is not None:
+            _fill_company_gaps(existing, lead)
+            return existing
+
+    if domain:
+        existing = (
+            await db.execute(select(Company).where(Company.website.ilike(f"%{domain}%")).limit(1))
+        ).scalar_one_or_none()
+        if existing is not None:
+            _fill_company_gaps(existing, lead)
+            return existing
+
+    normalized_city = dedup.normalize_city(lead.city)
+    if lead.company_name and normalized_city:
+        candidates = (
+            await db.execute(
+                select(Company).where(Company.city.ilike(f"%{normalized_city}%")).limit(200)
+            )
+        ).scalars().all()
+        target = dedup.normalize_company_name(lead.company_name)
+        for candidate in candidates:
+            if dedup.name_similarity(target, dedup.normalize_company_name(candidate.name)) >= (
+                settings.DEDUP_NAME_SIMILARITY_THRESHOLD
+            ):
+                _fill_company_gaps(candidate, lead)
+                return candidate
+
+    company = Company(
+        name=lead.company_name,
+        industry=lead.industry,
+        company_type=lead.company_type,
+        revenue_band=lead.revenue_band,
+        website=lead.website,
+        gst_number=gstin or None,
+        city=lead.city,
+        country=lead.country,
+        lat=lead.lat,
+        lng=lead.lng,
+        rating=lead.rating,
+    )
+    db.add(company)
+    await db.flush()
+    return company
+
+
+def _fill_company_gaps(company: Company, lead: NormalizedLead) -> None:
+    """Enriches an existing company with fields it is missing. Never overwrites."""
+    for company_attr, lead_attr in (
+        ("industry", "industry"),
+        ("company_type", "company_type"),
+        ("revenue_band", "revenue_band"),
+        ("website", "website"),
+        ("gst_number", "gst_number"),
+        ("city", "city"),
+        ("country", "country"),
+        ("lat", "lat"),
+        ("lng", "lng"),
+        ("rating", "rating"),
+    ):
+        if getattr(company, company_attr, None) in (None, "") and getattr(lead, lead_attr, None) not in (None, ""):
+            setattr(company, company_attr, getattr(lead, lead_attr))
+
+
+# --- Website scanner -----------------------------------------------------
+
+
+async def scan_website(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    data: WebsiteScanCreate,
+    *,
+    metering_exempt: bool = False,
+) -> WebsiteScan:
+    """Scans a real website: validates, fetches, and extracts actual content.
+
+    Ordering: SSRF validation first (an unsafe URL costs nothing and creates no
+    rows), then credit reservation, then the fetch. A site that is unreachable
+    still produces a persisted `WebsiteScan` row recording the failure — the
+    scan genuinely happened and consumed a credit, so hiding it would be wrong.
+    """
+    validated = await resolve_and_validate(data.url)
+
     reservation = await usage_service.reserve_credits(
-        db, organization_id, usage_service.scan_cost(), f"Website scan: {domain}"
+        db,
+        organization_id,
+        usage_service.scan_cost(),
+        f"Website scan: {validated.hostname}",
+        exempt=metering_exempt,
     )
 
     try:
-        return await _perform_scan(db, organization_id, user_id, url, domain)
+        started = time.perf_counter()
+        try:
+            profile = await build_website_profile(validated.url)
+        except FetchError as exc:
+            profile = None
+            fetch_error = str(exc)
+        else:
+            fetch_error = profile.error
+
+        duration_ms = int((time.perf_counter() - started) * 1000)
+
+        if profile is None or not profile.succeeded:
+            scan = WebsiteScan(
+                organization_id=organization_id,
+                user_id=user_id,
+                url=validated.url,
+                domain=validated.hostname,
+                company_name=None,
+                contact_person=None,
+                confidence_score=0,
+                emails=None,
+                phones=None,
+                gst_number=None,
+                gst_verified=False,
+                social_links=extractors.extract_social_links(""),
+                ssl_valid=False,
+                mobile_friendly=False,
+                load_time_ms=profile.load_time_ms if profile else None,
+                seo_score=None,
+                scan_duration_ms=duration_ms,
+            )
+            db.add(scan)
+            logger.info("Scan of %s failed: %s", validated.hostname, fetch_error)
+        else:
+            scan = WebsiteScan(
+                organization_id=organization_id,
+                user_id=user_id,
+                url=profile.url,
+                domain=profile.domain or validated.hostname,
+                company_name=profile.company_name,
+                contact_person=None,  # requires a people-data source; not fabricated
+                confidence_score=_confidence_from_profile(profile),
+                emails=profile.emails or None,
+                phones=profile.phones or None,
+                gst_number=profile.gstin,
+                gst_verified=bool(profile.gstin),  # only checksum-valid GSTINs reach here
+                social_links=profile.social_links,
+                ssl_valid=profile.ssl_valid,
+                mobile_friendly=profile.mobile_friendly,
+                load_time_ms=profile.load_time_ms,
+                seo_score=profile.seo_score,
+                scan_duration_ms=duration_ms,
+            )
+            db.add(scan)
+            if profile.gstin_rejected:
+                # Visible rather than silent: a GST format change should look
+                # like a bug report, not like "this site has no GST".
+                logger.info(
+                    "Scan of %s found %s GSTIN-shaped string(s) failing checksum: %s",
+                    profile.domain,
+                    len(profile.gstin_rejected),
+                    profile.gstin_rejected[:3],
+                )
+
+        await usage_service.settle_reservation(db, reservation, usage_service.scan_cost())
+        await db.commit()
+        await db.refresh(scan)
+        return scan
     except Exception:
-        # As in run_search: the reservation is pending in this transaction, so
-        # the rollback is the refund. Do not also call release_reservation().
         await db.rollback()
         raise
 
 
-async def _perform_scan(
-    db: AsyncSession,
-    organization_id: uuid.UUID,
-    user_id: uuid.UUID,
-    url: str,
-    domain: str,
-) -> WebsiteScan:
-    """Builds and persists the scan report for an already-validated URL.
+def _confidence_from_profile(profile) -> int:
+    """Confidence derived from what was actually found on the page.
 
-    Split out from `scan_website` so validation/metering stay clearly separated
-    from report generation — when real fetching replaces the deterministic
-    generator, only this function changes.
+    Replaces the previous random figure. Weighted by how directly each signal
+    supports "this is a contactable, legitimate business".
     """
-    start = time.monotonic()
-    rng = _seeded_rng(domain or url)
-    company_slug = (domain.split(".")[0] if domain else "contact").lower()
-
-    email_count = 1 + rng.randint(0, 1)
-    emails = [f"info@{domain}" if i == 0 else f"sales@{domain}" for i in range(email_count)]
-
-    phone_count = 1 + rng.randint(0, 1)
-    phones = [f"+91 {rng.randint(70000, 99999)} {rng.randint(10000, 99999)}" for _ in range(phone_count)]
-
-    state_codes = ["07", "27", "29", "33", "36", "19", "24", "09"]
-    pan_letters = "".join(chr(65 + rng.randint(0, 25)) for _ in range(5))
-    pan_digits = "".join(str(rng.randint(0, 9)) for _ in range(4))
-    gst_number = f"{rng.choice(state_codes)}{pan_letters}{pan_digits}{chr(65 + rng.randint(0, 25))}1Z{rng.randint(0, 9)}"
-    gst_found = rng.random() > 0.15
-
-    platforms = ["LinkedIn", "Facebook", "Instagram", "X"]
-    social = []
-    for platform in platforms:
-        found = rng.random() > 0.35
-        social.append({"platform": platform, "found": found, "handle": f"@{company_slug}" if found else None})
-
-    ssl_valid = rng.random() > 0.08
-    mobile_friendly = rng.random() > 0.2
-    load_time_ms = round(600 + rng.random() * 2200)
-    seo_score = round(55 + rng.random() * 40)
-
-    signals = [gst_found, ssl_valid, mobile_friendly] + [s["found"] for s in social]
-    positive = sum(1 for s in signals if s)
-    confidence = min(98, max(38, round((positive / len(signals)) * 78 + 18 + rng.random() * 6)))
-
-    contact_person = f"{rng.choice(_FIRST_NAMES)} {rng.choice(_LAST_NAMES)}"
-    company_name = _slug_company_name(domain or company_slug)
-
-    scan_duration_ms = round((time.monotonic() - start) * 1000) + rng.randint(1800, 3200)
-
-    scan = WebsiteScan(
-        organization_id=organization_id,
-        user_id=user_id,
-        url=url,
-        domain=domain or url,
-        company_name=company_name,
-        contact_person=contact_person,
-        confidence_score=confidence,
-        emails=emails,
-        phones=phones,
-        gst_number=gst_number if gst_found else None,
-        gst_verified=gst_found,
-        social_links=social,
-        ssl_valid=ssl_valid,
-        mobile_friendly=mobile_friendly,
-        load_time_ms=load_time_ms,
-        seo_score=seo_score,
-        scan_duration_ms=scan_duration_ms,
-    )
-    db.add(scan)
-    await db.commit()
-    await db.refresh(scan)
-    return scan
+    score = 0
+    if profile.emails:
+        score += 30
+    if profile.phones:
+        score += 22
+    if profile.gstin:
+        score += 18  # checksum-verified registration
+    if profile.ssl_valid:
+        score += 8
+    if profile.mobile_friendly:
+        score += 5
+    found_social = sum(1 for s in profile.social_links if s.get("found"))
+    score += min(10, found_social * 3)
+    score += int(7 * (profile.seo_score / 100)) if profile.seo_score else 0
+    return max(1, min(100, score))

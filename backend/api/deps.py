@@ -14,7 +14,7 @@ from auth.jwt import TokenError, TokenType, decode_token
 from database.session import get_db
 from models.enums import RoleName
 from models.organization import Organization, OrganizationMember
-from models.user import User
+from models.user import Permission, RolePermission, User
 from utils.exceptions import ForbiddenError, NotFoundError, UnauthorizedError
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -107,12 +107,59 @@ async def get_current_membership(
 
 
 def require_org_role(*allowed_roles: RoleName) -> Callable:
-    """Route dependency factory: `Depends(require_org_role(RoleName.OWNER, RoleName.ADMIN))`."""
+    """Route dependency factory: `Depends(require_org_role(RoleName.OWNER, RoleName.ADMIN))`.
 
-    async def _checker(membership: OrganizationMember = Depends(get_current_membership)) -> OrganizationMember:
+    Superadmins bypass the check, matching `require_permission` below. Without
+    this, the two authorization gates disagreed: a platform operator could
+    export an organization's leads (permission gate) but not read its billing
+    settings (role gate), purely because of which gate a route happened to use.
+    """
+
+    async def _checker(
+        membership: OrganizationMember = Depends(get_current_membership),
+        user: User = Depends(get_current_user),
+    ) -> OrganizationMember:
+        if user.is_superadmin:
+            return membership
         if membership.role.name not in allowed_roles:
             raise ForbiddenError(
                 f"This action requires one of the following roles: {', '.join(r.value for r in allowed_roles)}"
+            )
+        return membership
+
+    return _checker
+
+
+def require_permission(code: str) -> Callable:
+    """Route dependency factory gating on a seeded `Permission.code`.
+
+    Prefer this over `require_org_role` when a capability is already modelled as
+    a permission: the role -> permission mapping in `scripts/seed_data.py`
+    becomes the single source of truth, so granting a role a new capability is a
+    seed change rather than an edit to every route that allows it.
+
+    Superadmins bypass the check — they are platform operators, not members of
+    the organization whose role grants the permission.
+
+    Usage: `Depends(require_permission("leads.export"))`
+    """
+
+    async def _checker(
+        membership: OrganizationMember = Depends(get_current_membership),
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ) -> OrganizationMember:
+        if user.is_superadmin:
+            return membership
+
+        stmt = (
+            select(Permission.code)
+            .join(RolePermission, RolePermission.permission_id == Permission.id)
+            .where(RolePermission.role_id == membership.role_id, Permission.code == code)
+        )
+        if (await db.execute(stmt)).scalar_one_or_none() is None:
+            raise ForbiddenError(
+                f"Your role ({membership.role.name.value}) does not have the '{code}' permission"
             )
         return membership
 

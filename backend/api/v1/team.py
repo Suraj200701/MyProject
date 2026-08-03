@@ -11,7 +11,15 @@ from models.enums import RoleName
 from models.organization import Organization, OrganizationMember
 from models.user import User
 from schemas.common import MessageResponse
-from schemas.team import AcceptInvitationRequest, InvitationOut, InviteMemberRequest, MemberOut, UpdateMemberRoleRequest
+from schemas.team import (
+    AcceptInvitationRequest,
+    InvitationOut,
+    InviteMemberRequest,
+    MemberOut,
+    PermissionOut,
+    RolePermissionsOut,
+    UpdateMemberRoleRequest,
+)
 from services import team_service
 
 router = APIRouter(prefix="/team", tags=["Team"])
@@ -24,6 +32,29 @@ async def list_members(
     db: AsyncSession = Depends(get_db),
 ):
     return await team_service.list_members(db, organization.id)
+
+
+@router.get("/roles", response_model=list[RolePermissionsOut])
+async def list_roles(
+    _membership: OrganizationMember = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+):
+    """The role -> permission matrix this API enforces.
+
+    Read-only and organization-independent (roles are seeded globally), but
+    still behind membership so it is not a public description of the
+    authorization model.
+    """
+    return await team_service.list_role_permissions(db)
+
+
+@router.get("/permissions", response_model=list[PermissionOut])
+async def list_permissions(
+    _membership: OrganizationMember = Depends(get_current_membership),
+    db: AsyncSession = Depends(get_db),
+):
+    """Every capability a role can grant, with its description."""
+    return await team_service.list_permissions(db)
 
 
 @router.post("/invite", response_model=InvitationOut, status_code=201)

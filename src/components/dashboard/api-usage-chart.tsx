@@ -2,15 +2,26 @@
 
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { apiUsageData } from "@/lib/mock-data";
+import { useApiUsage } from "@/lib/api/queries";
+import { AsyncContent } from "@/components/shared/async-content";
 
 export function ApiUsageChart() {
+  const { data, isPending, isError, error } = useApiUsage();
+  const apiUsageData = data ?? [];
   return (
     <Card className="glass overflow-hidden">
       <CardHeader>
         <CardTitle>API Usage</CardTitle>
         <p className="mt-1 text-xs text-muted-foreground">Consumption against monthly provider limits</p>
       </CardHeader>
+      <AsyncContent
+        isPending={isPending}
+        isError={isError}
+        error={error}
+        isEmpty={apiUsageData.length === 0}
+        emptyMessage="No provider usage recorded yet."
+        className="min-h-[200px] p-5"
+      >
       <div className="flex flex-col gap-4 p-5">
         {apiUsageData.map((item) => {
           const pct = Math.min(100, Math.round((item.usage / item.limit) * 100));
@@ -31,6 +42,7 @@ export function ApiUsageChart() {
           );
         })}
       </div>
+      </AsyncContent>
     </Card>
   );
 }

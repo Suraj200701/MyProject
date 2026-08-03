@@ -114,7 +114,7 @@ export default function OnboardingPage() {
               ) : null}
 
               {step === FINALIZING_STEP ? (
-                <StepFinalizing onFinish={() => router.push("/dashboard")} />
+                <StepFinalizing answers={answers} onFinish={() => router.replace("/dashboard")} />
               ) : null}
             </motion.div>
           </AnimatePresence>

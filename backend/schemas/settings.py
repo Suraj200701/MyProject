@@ -41,6 +41,9 @@ class OrganizationOut(BaseModel):
     logo_url: str | None = None
     timezone: str
     locale: str
+    # Additive: the Team page shows when the workspace was created. Reading it
+    # from the Organization row is the only way to show a real date there.
+    created_at: datetime
 
     model_config = {"from_attributes": True}
 

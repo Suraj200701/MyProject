@@ -22,10 +22,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { cn, nextId } from "@/lib/utils";
-import { mockLeads } from "@/lib/mock-data";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { EXPORT_FIELDS, type ExportFormat, type ExportRecord, type ExportSource } from "@/components/export/types";
-import { FORMAT_META } from "@/components/export/mock-data";
+import { FORMAT_META } from "@/components/export/format-meta";
+import { toApiFormat, toApiScope, toExportRecord } from "@/components/export/export-adapter";
+import { ApiError, errorMessage } from "@/lib/api/client";
+import { exportsApi } from "@/lib/api/endpoints";
+import { useCreateExport, useLeads } from "@/lib/api/queries";
 
 const FORMAT_ICON: Record<ExportFormat, typeof FileText> = {
   CSV: Sheet,
@@ -34,13 +38,7 @@ const FORMAT_ICON: Record<ExportFormat, typeof FileText> = {
   JSON: Braces,
 };
 
-const PROGRESS_LABELS = ["Preparing data…", "Formatting rows…", "Generating file…", "Finalizing…"];
-
 type Step = "source" | "format" | "configure" | "review" | "progress" | "done";
-
-function delay(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
 
 export function ExportWizard({ onComplete }: { onComplete: (record: ExportRecord) => void }) {
   const [open, setOpen] = React.useState(false);
@@ -51,10 +49,21 @@ export function ExportWizard({ onComplete }: { onComplete: (record: ExportRecord
   const [fileName, setFileName] = React.useState("leadmaster_export");
   const [includeSummaries, setIncludeSummaries] = React.useState(true);
   const [progress, setProgress] = React.useState(0);
-  const [progressLabel, setProgressLabel] = React.useState(PROGRESS_LABELS[0]);
+  const [progressLabel, setProgressLabel] = React.useState("Generating your file…");
   const [result, setResult] = React.useState<ExportRecord | null>(null);
 
-  const sourceCount = source === "all" ? mockLeads.length : source === "filtered" ? Math.round(mockLeads.length * 0.4) : 12;
+  /**
+   * Real row count for the chosen scope, from the leads endpoint's pagination
+   * meta — one HEAD-like request rather than downloading rows to count them.
+   * The previous version guessed: all leads, 40% of them, or a flat 12.
+   *
+   * "selected" cannot be counted here because this wizard has no row selection
+   * (that lives on the Lead Database toolbar), so it reports 0 and the API is the
+   * authority once the export runs.
+   */
+  const { data: leadsMeta } = useLeads({ page_size: 1 });
+  const sourceCount = source === "selected" ? 0 : (leadsMeta?.meta.total_items ?? 0);
+  const createExport = useCreateExport();
 
   function reset() {
     setStep("source");
@@ -71,39 +80,77 @@ export function ExportWizard({ onComplete }: { onComplete: (record: ExportRecord
     setFields((prev) => (prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field]));
   }
 
+  /**
+   * Creates the export via `POST /exports`.
+   *
+   * Genuinely generates a file server-side. The previous version stepped a
+   * progress bar through four labels on timers and then fabricated an
+   * `ExportRecord` — row count guessed, size computed as `rows * 4.2 KB`, status
+   * hardcoded to "ready" — without any file existing.
+   *
+   * The progress bar is now indeterminate-ish: it advances while the request is
+   * in flight and completes when the response lands, because a single POST has no
+   * intermediate progress to report.
+   */
   async function startExport() {
     setStep("progress");
-    for (let i = 0; i < PROGRESS_LABELS.length; i++) {
-      setProgressLabel(PROGRESS_LABELS[i]);
-      await delay(500);
-      setProgress(Math.round(((i + 1) / PROGRESS_LABELS.length) * 100));
-    }
-    await delay(300);
+    setProgress(15);
+    setProgressLabel("Generating your file…");
 
-    const record: ExportRecord = {
-      id: nextId("exp"),
-      fileName: `${fileName || "export"}.${format.toLowerCase() === "excel" ? "xlsx" : format.toLowerCase()}`,
-      format,
-      rowCount: sourceCount,
-      sizeLabel: `${(sourceCount * 4.2).toFixed(0)} KB`,
-      createdAt: new Date().toISOString(),
-      status: "ready",
-    };
-    setResult(record);
-    onComplete(record);
-    setStep("done");
+    try {
+      const created = await createExport.mutateAsync({
+        resource: "leads",
+        format: toApiFormat(format),
+        scope: toApiScope(source),
+        // The wizard's own field labels are accepted verbatim by the API.
+        columns: fields,
+        file_name: fileName || undefined,
+      });
+
+      setProgress(100);
+      const record = toExportRecord(created);
+      setResult(record);
+      onComplete(record);
+      setStep("done");
+
+      if (created.status === "processing") {
+        // Large exports are queued to a Celery worker; say so instead of
+        // presenting a download button for a file that doesn't exist yet.
+        setProgressLabel("Queued for background generation");
+        toast.info("This export is large, so it's being generated in the background.", {
+          description: "It'll appear in the Download Center when it's ready.",
+        });
+      }
+      if (created.ignored_columns.length > 0) {
+        toast.warning(`Skipped unrecognized column(s): ${created.ignored_columns.join(", ")}`);
+      }
+    } catch (error) {
+      setStep("review");
+      setProgress(0);
+      if (error instanceof ApiError && error.isForbidden) {
+        toast.error(error.message, { description: "Ask an admin for export permission." });
+      } else if (error instanceof ApiError && error.isRateLimited) {
+        toast.error(error.message);
+      } else {
+        toast.error(errorMessage(error));
+      }
+    }
   }
 
-  function download() {
-    if (!result) return;
-    const blob = new Blob([`LeadMaster AI export — ${result.fileName}\nRows: ${result.rowCount}\n`], {
-      type: "text/plain",
-    });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = result.fileName;
-    link.click();
-    URL.revokeObjectURL(link.href);
+  /**
+   * Downloads the generated file.
+   *
+   * Mints a short-lived signed token and navigates to it, which is what lets the
+   * browser save the real bytes without an Authorization header. The previous
+   * implementation wrote a two-line text Blob named `.xlsx`.
+   */
+  async function download() {
+    if (!result || result.status !== "ready") return;
+    try {
+      window.location.assign(await exportsApi.downloadUrl(result.id));
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
   }
 
   return (

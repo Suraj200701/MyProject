@@ -1,8 +1,6 @@
 "use client";
 
-import * as React from "react";
-import { toast } from "sonner";
-import { Copy, Loader2, PlayCircle, RefreshCcw } from "lucide-react";
+import { Info } from "lucide-react";
 import type { ApiProvider } from "@/lib/types";
 import {
   Dialog,
@@ -11,14 +9,34 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusPill } from "@/components/api-manager/status-pill";
-import { Sparkline } from "@/components/api-manager/sparkline";
-import { getMaskedApiKey, getMockResponse, getSparklineData, type MockApiResponse } from "@/components/api-manager/mock-extras";
+import {
+  isNearQuota,
+  latencyLabel,
+  remainingQuota,
+  usagePercent,
+} from "@/components/api-manager/provider-utils";
 
+/**
+ * Provider detail.
+ *
+ * Three tabs were rebuilt because all three showed fabricated data:
+ *
+ *   * **Playground** — "Test Connection" waited 900ms and rendered a
+ *     category-flavoured JSON blob with a hardcoded `200 OK` and made-up
+ *     latency. No provider ever received a request. There is no
+ *     test-connection endpoint, so the tab now explains how to verify a
+ *     provider for real (run a search and read its provider runs).
+ *   * **Credentials** — displayed a plausible `sk_live_…` key and a
+ *     "Regenerate key" button that only re-seeded the fake string. Provider
+ *     credentials are stored encrypted server-side and are deliberately never
+ *     returned by any endpoint, so the tab now says where keys are actually set.
+ *   * **Usage** — a 7-day sparkline built from a PRNG. `ApiProvider` holds one
+ *     cumulative `usage_count`, not a time series, so the tab shows real
+ *     cumulative usage against the real quota instead of an invented history.
+ */
 export function ProviderDetailDialog({
   provider,
   open,
@@ -28,26 +46,7 @@ export function ProviderDetailDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const [keyVersion, setKeyVersion] = React.useState(0);
-  const [testing, setTesting] = React.useState(false);
-  const [response, setResponse] = React.useState<MockApiResponse | null>(null);
-
-  const sparkline = React.useMemo(() => getSparklineData(provider), [provider]);
-  const maskedKey = getMaskedApiKey(provider.id, keyVersion);
-
-  function regenerate() {
-    setKeyVersion((v) => v + 1);
-    toast.success("API key regenerated");
-  }
-
-  function testConnection() {
-    setTesting(true);
-    setResponse(null);
-    window.setTimeout(() => {
-      setResponse(getMockResponse(provider));
-      setTesting(false);
-    }, 900);
-  }
+  const percent = usagePercent(provider);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -61,66 +60,90 @@ export function ProviderDetailDialog({
           <DialogDescription>{provider.description}</DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="playground">
+        <Tabs defaultValue="usage">
           <TabsList>
-            <TabsTrigger value="playground">Playground</TabsTrigger>
-            <TabsTrigger value="credentials">Credentials</TabsTrigger>
             <TabsTrigger value="usage">Usage</TabsTrigger>
+            <TabsTrigger value="credentials">Credentials</TabsTrigger>
+            <TabsTrigger value="testing">Testing</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="playground">
-            <p className="text-xs text-muted-foreground">
-              Send a test request to verify this provider is reachable and returning data.
-            </p>
-            <Button size="sm" className="mt-3" onClick={testConnection} disabled={testing}>
-              {testing ? <Loader2 className="size-3.5 animate-spin" /> : <PlayCircle className="size-3.5" />}
-              {testing ? "Testing…" : "Test Connection"}
-            </Button>
-
-            {response && (
-              <div className="mt-3 animate-fade-in overflow-hidden rounded-lg border border-border">
-                <div className="flex items-center justify-between border-b border-border bg-surface-2/60 px-3 py-1.5">
-                  <span className="text-xs font-medium text-success">{response.httpStatus} OK</span>
-                  <span className="text-xs text-muted-foreground">{response.latencyMs}ms</span>
-                </div>
-                <pre className="max-h-56 overflow-auto bg-surface-2/30 p-3 font-mono text-[11px] leading-relaxed text-foreground/90">
-                  {JSON.stringify(response.body, null, 2)}
-                </pre>
+          <TabsContent value="usage">
+            <div className="flex items-baseline justify-between">
+              <p className="text-sm font-medium">
+                {provider.usage.toLocaleString()}
+                <span className="text-muted-foreground">
+                  {" / "}
+                  {provider.limit > 0 ? provider.limit.toLocaleString() : "unlimited"}
+                </span>
+              </p>
+              {provider.limit > 0 ? (
+                <span className="text-xs tabular-nums text-muted-foreground">{percent}%</span>
+              ) : null}
+            </div>
+            {provider.limit > 0 ? <Progress value={percent} className="mt-2" /> : null}
+            <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <dt className="text-muted-foreground">Remaining</dt>
+                <dd className="mt-0.5 font-medium text-foreground">
+                  {provider.limit > 0 ? remainingQuota(provider).toLocaleString() : "—"}
+                </dd>
               </div>
-            )}
+              <div>
+                <dt className="text-muted-foreground">Latency</dt>
+                <dd className="mt-0.5 font-medium text-foreground">{latencyLabel(provider)}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Connected</dt>
+                <dd className="mt-0.5 font-medium text-foreground">
+                  {provider.connected ? "Yes" : "No"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Category</dt>
+                <dd className="mt-0.5 font-medium text-foreground">{provider.category}</dd>
+              </div>
+            </dl>
+            {isNearQuota(provider) ? (
+              <p className="mt-3 text-xs text-warning">
+                This provider is at {percent}% of its quota.
+              </p>
+            ) : null}
+            <p className="mt-3 flex items-start gap-1.5 text-[11px] text-muted-foreground">
+              <Info className="mt-0.5 size-3 shrink-0" />
+              Usage is cumulative. Per-day history isn&apos;t recorded, so there&apos;s no trend to
+              chart here.
+            </p>
           </TabsContent>
 
           <TabsContent value="credentials">
-            <div className="flex flex-col gap-1.5">
-              <Label>API key</Label>
-              <div className="flex gap-2">
-                <Input readOnly value={maskedKey} className="font-mono text-xs" />
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => {
-                    navigator.clipboard?.writeText(maskedKey).catch(() => {});
-                    toast.success("Copied to clipboard");
-                  }}
-                >
-                  <Copy className="size-3.5" />
-                </Button>
-              </div>
-            </div>
-            <Button variant="secondary" size="sm" className="mt-3" onClick={regenerate}>
-              <RefreshCcw className="size-3.5" />
-              Regenerate key
-            </Button>
+            <p className="text-xs text-muted-foreground">
+              Provider credentials are stored encrypted on the server and are never sent back to
+              the browser — not even masked.
+            </p>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Set them as environment variables on the backend (for example{" "}
+              <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-[11px]">
+                GOOGLE_MAPS_API_KEY
+              </code>
+              ,{" "}
+              <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-[11px]">
+                MAPPLS_CLIENT_ID
+              </code>
+              ), then restart the API. A provider with no credentials is skipped during a search
+              rather than charged for.
+            </p>
           </TabsContent>
 
-          <TabsContent value="usage">
-            <p className="text-xs text-muted-foreground mb-2">Requests over the last 7 days</p>
-            <Sparkline data={sparkline} />
-            <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
-              {sparkline.map((d) => (
-                <span key={d.day}>{d.day}</span>
-              ))}
-            </div>
+          <TabsContent value="testing">
+            <p className="text-xs text-muted-foreground">
+              There&apos;s no isolated test-connection endpoint. To verify this provider end to end,
+              run a search from Lead Search — the results panel lists every provider that was
+              queried, whether it succeeded, and how many leads it returned.
+            </p>
+            <p className="mt-3 text-xs text-muted-foreground">
+              A provider that is missing credentials is reported as skipped, with the reason, rather
+              than failing the search.
+            </p>
           </TabsContent>
         </Tabs>
       </DialogContent>

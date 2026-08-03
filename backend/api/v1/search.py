@@ -10,7 +10,7 @@ from models.organization import Organization
 from models.search import ApiProvider, Search, WebsiteScan
 from models.user import User
 from schemas.search import ApiProviderOut, SearchCreate, SearchOut, WebsiteScanCreate, WebsiteScanOut
-from services import search_service
+from services import search_service, usage_service
 from utils.pagination import Page, PaginationParams, paginate, pagination_params
 
 router = APIRouter(tags=["Search"])
@@ -23,7 +23,12 @@ async def create_search(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    search = await search_service.run_search(db, organization.id, user.id, payload)
+    # Superadmins and development runs bypass metering entirely — resolved here
+    # because this is where the authenticated User is available.
+    exempt = usage_service.is_metering_exempt(user)
+    search = await search_service.run_search(
+        db, organization.id, user.id, payload, metering_exempt=exempt
+    )
     return SearchOut(
         id=search.id,
         query=search.query,
@@ -80,7 +85,10 @@ async def scan_website(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    scan = await search_service.scan_website(db, organization.id, user.id, payload)
+    exempt = usage_service.is_metering_exempt(user)
+    scan = await search_service.scan_website(
+        db, organization.id, user.id, payload, metering_exempt=exempt
+    )
     return scan
 
 

@@ -4,7 +4,9 @@ import { Sparkles, Radar } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { MAP_PROVIDERS, MAP_INDUSTRIES, type MapProviderId } from "@/components/map/map-utils";
+import * as React from "react";
+import { MAP_PROVIDERS, type MapProviderId } from "@/components/map/map-utils";
+import { useTopIndustries } from "@/lib/api/queries";
 
 export function ControlPanel({
   radiusKm,
@@ -25,6 +27,13 @@ export function ControlPanel({
   inViewCount: number;
   clusterCount: number;
 }) {
+  // Real industries present in this organization's leads, not a fixture's list.
+  const { data: industriesData } = useTopIndustries();
+  const industries = React.useMemo(
+    () => (industriesData ?? []).map((i) => i.name).filter(Boolean),
+    [industriesData],
+  );
+
   return (
     <div className="glass-strong w-[300px] rounded-2xl border border-border-strong p-4 shadow-2xl">
       <div className="flex items-center justify-between">
@@ -71,7 +80,7 @@ export function ControlPanel({
         >
           All
         </button>
-        {MAP_INDUSTRIES.slice(0, 5).map((ind) => (
+        {industries.slice(0, 5).map((ind: string) => (
           <button
             key={ind}
             onClick={() => onIndustryChange(ind)}
@@ -104,10 +113,18 @@ export function ControlPanel({
   );
 }
 
-export function ResultCountBadge({ count, total }: { count: number; total: number }) {
+export function ResultCountBadge({
+  count,
+  total,
+  loading = false,
+}: {
+  count: number;
+  total: number;
+  loading?: boolean;
+}) {
   return (
     <Badge variant="primary" className="glass-strong shadow-lg">
-      {count} in view · {total} searched
+      {loading ? "Searching…" : `${count} in view · ${total} mapped`}
     </Badge>
   );
 }

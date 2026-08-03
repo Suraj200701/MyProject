@@ -8,12 +8,15 @@ IMPORTANT — read this before touching anything below:
     API call, no API key needed. This is the endpoint the frontend's Map
     Search page radius slider should call.
 
-  * `POST /map/geocode`, `GET /map/reverse-geocode`, `GET /map/nearby-places`,
-    and `POST /map/distance-matrix` all proxy real Google Maps REST APIs
-    (Geocoding, Places Nearby Search, Distance Matrix) via httpx. They will
-    NOT return live data until a real `GOOGLE_MAPS_API_KEY` is set in `.env`
-    — until then they raise a 400 explaining exactly that (see
-    `services.maps_service._require_api_key`). This is expected, not a bug.
+  * `POST /map/geocode`, `GET /map/reverse-geocode` and `GET /map/nearby-places`
+    call a real geocoding provider: Google Maps when `GOOGLE_MAPS_API_KEY` is
+    set, otherwise Mappls when `MAPPLS_CLIENT_ID`/`MAPPLS_CLIENT_SECRET` are.
+    With neither configured they raise a 400 naming both options.
+
+  * `GET /map/autocomplete` is Mappls-only (Google's Places Autocomplete is a
+    separately billed product this deployment does not integrate), and
+    `POST /map/distance-matrix` is Google-only for the mirror-image reason.
+    Each raises a 400 saying which credential it needs.
 
 All routes require an authenticated user with an active organization.
 """
@@ -39,8 +42,7 @@ router = APIRouter(
 
 @router.post("/geocode", response_model=GeocodeResult)
 async def geocode(payload: GeocodeRequest):
-    """Resolves a free-text address/city into lat/lng. Real Google Geocoding
-    API call — requires GOOGLE_MAPS_API_KEY."""
+    """Resolves a free-text address/city into lat/lng via Google or Mappls."""
     result = await maps_service.geocode_address(payload.address)
     if result is None:
         raise NotFoundError("No results found for that address")
@@ -52,12 +54,24 @@ async def reverse_geocode(
     lat: float = Query(..., ge=-90, le=90),
     lng: float = Query(..., ge=-180, le=180),
 ):
-    """Resolves lat/lng into a formatted address. Real Google Geocoding API
-    call — requires GOOGLE_MAPS_API_KEY."""
+    """Resolves lat/lng into a formatted address via Google or Mappls."""
     result = await maps_service.reverse_geocode(lat, lng)
     if result is None:
         raise NotFoundError("No address found for those coordinates")
     return GeocodeResult(**result)
+
+
+@router.get("/autocomplete")
+async def autocomplete(
+    query: str = Query(..., min_length=1, max_length=200),
+    lat: float | None = Query(default=None, ge=-90, le=90),
+    lng: float | None = Query(default=None, ge=-180, le=180),
+):
+    """Type-ahead place suggestions from Mappls, optionally biased to a point.
+
+    Requires MAPPLS_CLIENT_ID / MAPPLS_CLIENT_SECRET.
+    """
+    return await maps_service.autocomplete(query, lat, lng)
 
 
 @router.post("/nearby-leads", response_model=list[NearbyLeadOut])
@@ -118,8 +132,11 @@ async def nearby_places(
     radius_meters: int = Query(1500, gt=0, le=50000),
     keyword: str | None = Query(default=None),
 ):
-    """Proxies Google's Places Nearby Search API. Real API call — requires
-    GOOGLE_MAPS_API_KEY. Returns Google's raw-ish place results."""
+    """Places near a point, from Google or Mappls.
+
+    Both providers are normalized to `{name, address, lat, lng, source}`.
+    `lat`/`lng` are null for Mappls projects without coordinate delivery.
+    """
     return await maps_service.nearby_search(lat, lng, radius_meters, keyword)
 
 

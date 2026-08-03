@@ -1,6 +1,6 @@
 # LeadMaster AI — API Testing Guide
 
-Auto-generated from the live OpenAPI schema (`http://127.0.0.1:8000/openapi.json`) — every example below reflects the actual request/response models in the code, not hand-written guesses. 100 endpoints across 13 modules.
+Auto-generated from the live OpenAPI schema (`http://127.0.0.1:8000/openapi.json`) — every example below reflects the actual request/response models in the code, not hand-written guesses. 109 endpoints across 14 modules.
 
 ## Base URL
 
@@ -22,14 +22,14 @@ Endpoints tagged **org-scoped** additionally resolve the caller's active organiz
 
 - [Health](#health) — 2 endpoint(s)
 - [Auth](#auth) — 16 endpoint(s)
-- [Leads](#leads) — 9 endpoint(s)
+- [Leads](#leads) — 10 endpoint(s)
 - [Search](#search) — 5 endpoint(s)
 - [Dashboard](#dashboard) — 7 endpoint(s)
 - [Analytics](#analytics) — 5 endpoint(s)
 - [Billing](#billing) — 10 endpoint(s)
 - [Files](#files) — 5 endpoint(s)
 - [Notifications](#notifications) — 7 endpoint(s)
-- [Map](#map) — 5 endpoint(s)
+- [Map](#map) — 6 endpoint(s)
 - [Admin](#admin) — 10 endpoint(s)
 - [Settings](#settings) — 11 endpoint(s)
 - [Team](#team) — 8 endpoint(s)
@@ -821,7 +821,7 @@ Authorization: Bearer <access_token>
         "string"
       ],
       "created_at": "2026-07-30T09:00:00Z",
-      "gst_number": "27ABCDE1234F1Z5",
+      "gst_number": "27AAPFU0939F1ZV",
       "lat": 18.5204,
       "lng": 73.8567,
       "ai_summary": "string"
@@ -867,7 +867,7 @@ Content-Type: application/json
   "company_type": "Private Ltd",
   "revenue_band": "$1M-$5M",
   "website": "https://acmecorp.com",
-  "gst_number": "27ABCDE1234F1Z5",
+  "gst_number": "27AAPFU0939F1ZV",
   "city": "Pune",
   "country": "India",
   "lat": 18.5204,
@@ -907,7 +907,7 @@ Content-Type: application/json
     "string"
   ],
   "created_at": "2026-07-30T09:00:00Z",
-  "gst_number": "27ABCDE1234F1Z5",
+  "gst_number": "27AAPFU0939F1ZV",
   "lat": 18.5204,
   "lng": 73.8567,
   "ai_summary": "string"
@@ -926,7 +926,7 @@ curl -X POST \
   "company_type": "Private Ltd",
   "revenue_band": "$1M-$5M",
   "website": "https://acmecorp.com",
-  "gst_number": "27ABCDE1234F1Z5",
+  "gst_number": "27AAPFU0939F1ZV",
   "city": "Pune",
   "country": "India",
   "lat": 18.5204,
@@ -981,7 +981,7 @@ Authorization: Bearer <access_token>
     "string"
   ],
   "created_at": "2026-07-30T09:00:00Z",
-  "gst_number": "27ABCDE1234F1Z5",
+  "gst_number": "27AAPFU0939F1ZV",
   "lat": 18.5204,
   "lng": 73.8567,
   "ai_summary": "string",
@@ -1067,7 +1067,7 @@ Content-Type: application/json
     "string"
   ],
   "created_at": "2026-07-30T09:00:00Z",
-  "gst_number": "27ABCDE1234F1Z5",
+  "gst_number": "27AAPFU0939F1ZV",
   "lat": 18.5204,
   "lng": 73.8567,
   "ai_summary": "string"
@@ -1121,6 +1121,52 @@ Authorization: Bearer <access_token>
 curl -X DELETE \
   "http://localhost:8000/api/v1/leads/{lead_id}" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### `POST /api/v1/leads/import`
+
+**Import Leads Csv**
+
+- **Method:** `POST`
+- **URL:** `http://localhost:8000/api/v1/leads/import`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+```
+
+**Request Body** (`multipart/form-data`):
+
+| Field | Value | Required |
+|---|---|---|
+| `file` | file upload — @/path/to/file.pdf | yes |
+
+**Response Body** (`201`):
+```json
+{
+  "total_rows": 1,
+  "imported": 1,
+  "duplicates_skipped": 1,
+  "invalid_rows": 1,
+  "errors": [
+    {
+      "line": 1,
+      "message": "string",
+      "company": "Acme Switchgear"
+    }
+  ],
+  "dedup_signals": {}
+}
+```
+
+**Example curl:**
+```bash
+curl -X POST \
+  "http://localhost:8000/api/v1/leads/import" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "file=@/path/to/file.pdf"
 ```
 
 ### `POST /api/v1/leads/bulk-delete`
@@ -1478,7 +1524,7 @@ Content-Type: application/json
   "phones": [
     "+91 98765 43210"
   ],
-  "gst_number": "27ABCDE1234F1Z5",
+  "gst_number": "27AAPFU0939F1ZV",
   "gst_verified": true,
   "social_links": [
     {
@@ -1540,7 +1586,7 @@ Authorization: Bearer <access_token>
       "phones": [
         "+91 98765 43210"
       ],
-      "gst_number": "27ABCDE1234F1Z5",
+      "gst_number": "27AAPFU0939F1ZV",
       "gst_verified": true,
       "social_links": [
         {
@@ -2927,6 +2973,35 @@ Authorization: Bearer <access_token>
 ```bash
 curl -X GET \
   "http://localhost:8000/api/v1/map/reverse-geocode" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+### `GET /api/v1/map/autocomplete`
+
+**Autocomplete**
+
+- **Method:** `GET`
+- **URL:** `http://localhost:8000/api/v1/map/autocomplete`
+- **Authentication:** **Required.** `Authorization: Bearer <access_token>` (resolves the caller's organization automatically; pass `X-Organization-Id` to target a specific workspace if the user belongs to more than one)
+- **Query parameters:**
+  - `query` (string) *(required)*
+  - `lat` (number)
+  - `lng` (number)
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Response Body** (`200`):
+```json
+{}
+```
+
+**Example curl:**
+```bash
+curl -X GET \
+  "http://localhost:8000/api/v1/map/autocomplete" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 

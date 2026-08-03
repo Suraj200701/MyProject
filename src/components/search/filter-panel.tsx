@@ -13,17 +13,18 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { ChipInput } from "@/components/search/chip-input";
-import { mockLeads } from "@/lib/mock-data";
+import { useCountryAnalytics, useProviders, useTopIndustries } from "@/lib/api/queries";
 import type { SearchFilters } from "@/components/search/types";
 
-function unique(values: string[]) {
-  return Array.from(new Set(values)).sort();
-}
-
-const industries = unique(mockLeads.map((l) => l.industry));
-const countries = unique(mockLeads.map((l) => l.country));
-const providers = unique(mockLeads.map((l) => l.provider));
-const companyTypes = unique(mockLeads.map((l) => l.companyType));
+/**
+ * Company types the backend recognises.
+ *
+ * Unlike industries/countries/providers there is no endpoint that enumerates
+ * distinct company types, so this stays a static list — it is a fixed set of
+ * legal forms, not data derived from the lead table. Kept as UI configuration
+ * rather than deleted, since a free-text field here would be worse.
+ */
+const COMPANY_TYPES = ["Private Ltd", "Public Ltd", "LLP", "Partnership", "Proprietorship"];
 
 export function FilterPanel({
   filters,
@@ -32,6 +33,26 @@ export function FilterPanel({
   filters: SearchFilters;
   onChange: (filters: SearchFilters) => void;
 }) {
+  // Options come from the analytics/provider endpoints, so the dropdowns reflect
+  // the organization's actual data instead of a fixture's vocabulary.
+  const { data: industriesData } = useTopIndustries();
+  const { data: countriesData } = useCountryAnalytics();
+  const { data: providersData } = useProviders();
+
+  const industries = React.useMemo(
+    () => Array.from(new Set((industriesData ?? []).map((i) => i.name).filter(Boolean))).sort(),
+    [industriesData],
+  );
+  const countries = React.useMemo(
+    () => Array.from(new Set((countriesData ?? []).map((c) => c.country).filter(Boolean))).sort(),
+    [countriesData],
+  );
+  const providers = React.useMemo(
+    () => Array.from(new Set((providersData ?? []).map((p) => p.name))).sort(),
+    [providersData],
+  );
+  const companyTypes = COMPANY_TYPES;
+
   function update<K extends keyof SearchFilters>(key: K, value: SearchFilters[K]) {
     onChange({ ...filters, [key]: value });
   }

@@ -15,10 +15,12 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import func, select
 
+from config.settings import Settings
 from models.billing import CreditWallet, Transaction
 from models.enums import TransactionType
-from models.organization import Organization
+from models.organization import Organization, OrganizationMember
 from models.search import ApiProvider
+from models.user import User
 from services import usage_service
 from utils.exceptions import InsufficientCreditsError
 
@@ -45,6 +47,18 @@ async def _set_balance(session, org_id: uuid.UUID, value: int) -> None:
         await session.execute(select(CreditWallet).where(CreditWallet.organization_id == org_id))
     ).scalar_one()
     wallet.balance = value
+    await session.commit()
+
+
+async def _promote_to_superadmin(session, org_id: uuid.UUID) -> None:
+    """Flags the organization's member as a platform superadmin."""
+    user_id = (
+        await session.execute(
+            select(OrganizationMember.user_id).where(OrganizationMember.organization_id == org_id)
+        )
+    ).scalars().first()
+    user = (await session.execute(select(User).where(User.id == user_id))).scalar_one()
+    user.is_superadmin = True
     await session.commit()
 
 
@@ -193,7 +207,16 @@ async def test_metering_disabled_is_a_noop(client: AsyncClient, signed_up_user, 
 
 
 @asyncio_test
-async def test_search_debits_credits(client: AsyncClient, signed_up_user, db_session):
+async def test_search_debits_credits(
+    client: AsyncClient, signed_up_user, db_session, google_places_configured
+):
+    """A search that actually sources leads consumes credits and is ledgered.
+
+    This needs a configured provider. It used to pass without one only because
+    the search service synthesized leads from a static pool; now that the
+    generator is gone, an unconfigured search legitimately costs nothing (see
+    test_unconfigured_search_costs_nothing below).
+    """
     _, headers = signed_up_user
     org_id = await _org_id(db_session, headers)
     await _set_balance(db_session, org_id, 5000)
@@ -201,6 +224,7 @@ async def test_search_debits_credits(client: AsyncClient, signed_up_user, db_ses
     before = await _balance(db_session, org_id)
     resp = await client.post("/api/v1/search", headers=headers, json={"query": "Panel Builders in Pune"})
     assert resp.status_code == 201
+    assert resp.json()["results_count"] > 0
 
     db_session.expire_all()
     after = await _balance(db_session, org_id)
@@ -218,6 +242,36 @@ async def test_search_debits_credits(client: AsyncClient, signed_up_user, db_ses
         )
     ).scalar_one()
     assert count >= 1
+
+
+@asyncio_test
+async def test_unconfigured_search_costs_nothing(
+    client: AsyncClient, signed_up_user, db_session, monkeypatch
+):
+    """Providers without credentials are excluded before the reservation.
+
+    So a search that cannot possibly source anything is free rather than
+    charging for calls that were never made.
+    """
+    from services.providers import google_places, mappls, website_search
+
+    monkeypatch.setattr(google_places.settings, "GOOGLE_MAPS_API_KEY", "", raising=False)
+    monkeypatch.setattr(mappls.settings, "MAPPLS_CLIENT_ID", "", raising=False)
+    monkeypatch.setattr(mappls.settings, "MAPPLS_CLIENT_SECRET", "", raising=False)
+    monkeypatch.setattr(google_places.settings, "BING_SEARCH_API_KEY", "", raising=False)
+    monkeypatch.setattr(website_search.settings, "SCANNER_ENABLED", False, raising=False)
+
+    _, headers = signed_up_user
+    org_id = await _org_id(db_session, headers)
+    await _set_balance(db_session, org_id, 500)
+
+    before = await _balance(db_session, org_id)
+    resp = await client.post("/api/v1/search", headers=headers, json={"query": "Panel Builders in Pune"})
+    assert resp.status_code == 201
+    assert resp.json()["results_count"] == 0
+
+    db_session.expire_all()
+    assert await _balance(db_session, org_id) == before
 
 
 @asyncio_test
@@ -341,3 +395,190 @@ async def test_scan_persists_normalized_url(client: AsyncClient, signed_up_user,
     body = resp.json()
     assert body["url"] == "http://example.com/Path"
     assert body["domain"] == "example.com"
+
+
+# --- Superadmin exemption -------------------------------------------------
+
+
+def test_superadmin_is_exempt_even_when_metering_is_active(monkeypatch):
+    """A platform operator must never be blocked by a tenant's wallet."""
+    monkeypatch.setattr(usage_service.settings, "CREDIT_METERING_ENABLED", True, raising=False)
+    monkeypatch.setattr(usage_service.settings, "ENVIRONMENT", "production", raising=False)
+
+    class Actor:
+        def __init__(self, superadmin: bool) -> None:
+            self.is_superadmin = superadmin
+
+    assert usage_service.is_metering_exempt(Actor(True)) is True
+    assert usage_service.is_metering_exempt(Actor(False)) is False
+    # No actor (background job) is NOT exempt — it must still respect the wallet.
+    assert usage_service.is_metering_exempt(None) is False
+
+
+@asyncio_test
+async def test_exempt_reservation_never_touches_the_wallet(db_session, signed_up_user):
+    """Exemption is total: no balance check, no debit, no ledger row.
+
+    Charging zero would still write a transaction and imply the operator's
+    activity was billable to this tenant; skipping outright keeps the customer's
+    usage history clean.
+    """
+    org_id = await _org_id(db_session, None)
+    await _set_balance(db_session, org_id, 10)
+
+    reservation = await usage_service.reserve_credits(
+        db_session, org_id, 5000, "Superadmin search", exempt=True
+    )
+    await db_session.commit()
+
+    assert reservation.amount == 0
+    assert reservation.is_active is False
+    # Balance untouched despite the request being 500x the balance.
+    assert await _balance(db_session, org_id) == 10
+
+    ledger = (
+        await db_session.execute(
+            select(func.count()).select_from(Transaction).where(Transaction.organization_id == org_id)
+        )
+    ).scalar_one()
+    assert ledger == 0
+
+
+@asyncio_test
+async def test_non_exempt_reservation_still_enforces_the_balance(db_session, signed_up_user):
+    """The normal path is unchanged by the exemption parameter's existence."""
+    org_id = await _org_id(db_session, None)
+    await _set_balance(db_session, org_id, 10)
+
+    with pytest.raises(InsufficientCreditsError):
+        await usage_service.reserve_credits(db_session, org_id, 5000, "Normal search", exempt=False)
+
+    await db_session.rollback()
+    assert await _balance(db_session, org_id) == 10
+
+
+@asyncio_test
+async def test_settle_and_release_are_noops_for_an_exempt_reservation(db_session, signed_up_user):
+    """Guards against an exempt run accidentally *crediting* the wallet."""
+    org_id = await _org_id(db_session, None)
+    await _set_balance(db_session, org_id, 10)
+
+    reservation = await usage_service.reserve_credits(
+        db_session, org_id, 5000, "Superadmin search", exempt=True
+    )
+    assert await usage_service.settle_reservation(db_session, reservation, 4000) == 0
+    await usage_service.release_reservation(db_session, reservation, "cleanup")
+    await db_session.commit()
+
+    assert await _balance(db_session, org_id) == 10
+
+
+# --- Development escape hatch ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("environment", "enabled", "disabled_in_dev", "expected"),
+    [
+        # Production always meters, regardless of the development flag.
+        ("production", True, True, True),
+        ("production", True, False, True),
+        ("staging", True, True, True),
+        # The master switch still wins everywhere.
+        ("production", False, True, False),
+        # Development is exempt by default, but can opt back in.
+        ("development", True, True, False),
+        ("development", True, False, True),
+    ],
+)
+def test_credit_metering_active_matrix(environment, enabled, disabled_in_dev, expected):
+    """The development escape hatch must be unreachable outside development.
+
+    Guards the one thing that would be catastrophic: a config where production
+    silently stops charging for billable work.
+    """
+    settings = Settings(
+        ENVIRONMENT=environment,
+        CREDIT_METERING_ENABLED=enabled,
+        CREDIT_METERING_DISABLED_IN_DEVELOPMENT=disabled_in_dev,
+    )
+    assert settings.credit_metering_active is expected
+
+
+def test_metering_inactive_exempts_everyone(monkeypatch):
+    """When metering is off globally, every actor is exempt — not just admins."""
+    monkeypatch.setattr(usage_service.settings, "CREDIT_METERING_ENABLED", False, raising=False)
+
+    class Actor:
+        is_superadmin = False
+
+    assert usage_service.is_metering_exempt(Actor()) is True
+    assert usage_service.is_metering_exempt(None) is True
+
+
+@asyncio_test
+async def test_superadmin_search_is_unlimited_end_to_end(
+    client: AsyncClient, signed_up_user, db_session, google_places_configured
+):
+    """A superadmin with a drained wallet still gets a full search.
+
+    The unit tests above cover `reserve_credits(exempt=True)`; this drives the
+    real HTTP route to prove the exemption is actually plumbed through the
+    endpoint -> search_service -> usage_service chain, not just available in it.
+    """
+    _, headers = signed_up_user
+    org_id = await _org_id(db_session, headers)
+    await _set_balance(db_session, org_id, 0)
+
+    await _promote_to_superadmin(db_session, org_id)
+
+    resp = await client.post("/api/v1/search", headers=headers, json={"query": "Panel Builders in Pune"})
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["results_count"] > 0, "the search must return real results, not an empty pass-through"
+
+    db_session.expire_all()
+    assert await _balance(db_session, org_id) == 0, "balance must not go negative"
+
+    ledger = (
+        await db_session.execute(
+            select(func.count()).select_from(Transaction).where(Transaction.organization_id == org_id)
+        )
+    ).scalar_one()
+    assert ledger == 0, "an operator's search must not appear in the tenant's billing history"
+
+
+@asyncio_test
+async def test_normal_user_is_still_blocked_when_out_of_credits(
+    client: AsyncClient, signed_up_user, db_session, google_places_configured
+):
+    """The counterpart to the test above: exemption did not leak to everyone.
+
+    Same setup, same zero balance — only `is_superadmin` differs.
+    """
+    _, headers = signed_up_user
+    org_id = await _org_id(db_session, headers)
+    await _set_balance(db_session, org_id, 0)
+
+    resp = await client.post("/api/v1/search", headers=headers, json={"query": "Panel Builders in Pune"})
+    assert resp.status_code == 402, resp.text
+
+
+@asyncio_test
+async def test_superadmin_scan_is_unlimited_end_to_end(
+    client: AsyncClient, signed_up_user, db_session, monkeypatch
+):
+    """The scanner path is exempt too — it reserves separately from search."""
+    from utils import url_guard
+
+    monkeypatch.setattr(url_guard, "_resolve_sync", lambda h, p: ["93.184.216.34"])
+
+    _, headers = signed_up_user
+    org_id = await _org_id(db_session, headers)
+    await _set_balance(db_session, org_id, 0)
+
+    await _promote_to_superadmin(db_session, org_id)
+
+    resp = await client.post("/api/v1/scan-website", headers=headers, json={"url": "example.com"})
+    assert resp.status_code == 201, resp.text
+
+    db_session.expire_all()
+    assert await _balance(db_session, org_id) == 0

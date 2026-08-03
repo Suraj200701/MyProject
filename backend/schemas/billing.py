@@ -94,3 +94,16 @@ class CreditTopupRequest(BaseModel):
 
 class CheckoutSessionOut(BaseModel):
     checkout_url: str
+
+
+class CreditPackOut(BaseModel):
+    """One purchasable credit bundle.
+
+    Prices are returned in minor units so the client formats them with the same
+    currency logic it uses for invoices, rather than parsing a display string.
+    """
+
+    id: str
+    credits: int
+    amount_cents: int
+    currency: str = "usd"

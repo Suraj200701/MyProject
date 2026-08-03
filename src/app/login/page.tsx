@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 
@@ -11,6 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
+import { errorMessage } from "@/lib/api/client";
+import { authApi } from "@/lib/api/endpoints";
+import { useAuth } from "@/lib/auth/auth-context";
 import Link from "next/link";
 
 function GoogleIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -36,8 +40,10 @@ function GoogleIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { login, status } = useAuth();
   const [showPassword, setShowPassword] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [googleLoading, setGoogleLoading] = React.useState(false);
@@ -45,27 +51,63 @@ export default function LoginPage() {
   const [password, setPassword] = React.useState("");
   const [rememberMe, setRememberMe] = React.useState(true);
 
-  function handleSubmit(e: React.FormEvent) {
+  /** Where to land after signing in — set by the dashboard guard on redirect. */
+  const nextPath = searchParams.get("next") || "/dashboard";
+
+  /**
+   * Bounce users who are *already* signed in when they land here.
+   *
+   * The latch stops this from also firing the instant `login()` succeeds, which
+   * would race the explicit navigation below and send an unverified user to the
+   * dashboard instead of /verify-email.
+   */
+  const wasAlreadySignedIn = React.useRef<boolean | null>(null);
+  React.useEffect(() => {
+    if (status === "loading") return;
+    if (wasAlreadySignedIn.current === null) {
+      wasAlreadySignedIn.current = status === "authenticated";
+    }
+    if (wasAlreadySignedIn.current && status === "authenticated") {
+      router.replace(nextPath);
+    }
+  }, [status, router, nextPath]);
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!email || !password) {
       toast.error("Please enter your email and password.");
       return;
     }
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const user = await login(email, password, rememberMe);
       toast.success("Welcome back!");
-      router.push("/two-factor");
-    }, 1200);
+      // The backend issues tokens on a correct password — it does not hold the
+      // session pending a second factor — so there is no post-login 2FA gate to
+      // route through. Passwordless/OTP sign-in lives at /two-factor and is
+      // reached from the link below instead.
+      router.replace(user.is_email_verified ? nextPath : "/verify-email");
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function handleGoogle() {
+  async function handleGoogle() {
     setGoogleLoading(true);
-    setTimeout(() => {
+    // Probe before navigating: this deployment 400s if GOOGLE_CLIENT_ID is
+    // unset, and because OAuth needs a top-level document load there is no way
+    // to catch that after the fact — the user would land on a JSON error page.
+    const { available, reason } = await authApi.isGoogleOAuthAvailable();
+    if (!available) {
       setGoogleLoading(false);
-      toast.success("Signed in with Google");
-      router.push("/dashboard");
-    }, 1200);
+      toast.error(reason ?? "Google sign-in isn't available on this server.", {
+        description: "Sign in with your email and password instead.",
+      });
+      return;
+    }
+    window.location.href = authApi.googleLoginUrl();
   }
 
   return (
@@ -161,6 +203,38 @@ export default function LoginPage() {
         {googleLoading ? <Loader2 className="size-4 animate-spin" /> : <GoogleIcon />}
         Continue with Google
       </Button>
+
+      <p className="mt-4 text-center text-sm text-muted-foreground">
+        <Link
+          href="/two-factor"
+          className="font-medium text-primary hover:underline underline-offset-4"
+        >
+          Sign in with a one-time code
+        </Link>
+      </p>
     </AuthShell>
+  );
+}
+
+
+/**
+ * Suspense boundary for `useSearchParams()`.
+ *
+ * Without it, `next build` fails to prerender this route:
+ * "useSearchParams() should be wrapped in a suspense boundary".
+ */
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+    <AuthShell title="Welcome back" description="Sign in to your LeadMaster AI workspace.">
+      <div className="flex min-h-[280px] items-center justify-center">
+        <Loader2 className="size-5 animate-spin text-primary" />
+      </div>
+    </AuthShell>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
   );
 }

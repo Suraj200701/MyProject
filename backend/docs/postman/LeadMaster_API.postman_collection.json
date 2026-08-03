@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "04665d34-9505-4c0f-87b0-b960a68d965d",
+    "_postman_id": "d3551b0c-167f-4057-909d-eb5b2af79c5e",
     "name": "LeadMaster AI API",
     "description": "Auto-generated from the live OpenAPI schema. Run 'Auth > Login' first \u2014 it saves {{access_token}}/{{refresh_token}} automatically via a test script.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -18,7 +18,7 @@
   "variable": [
     {
       "key": "base_url",
-      "value": "http://localhost:8000/api/v1",
+      "value": "http://localhost:8000",
       "type": "string"
     },
     {
@@ -708,7 +708,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"company\": \"Acme Switchgear\",\n  \"industry\": \"Panel Builders\",\n  \"company_type\": \"Private Ltd\",\n  \"revenue_band\": \"$1M-$5M\",\n  \"website\": \"https://acmecorp.com\",\n  \"gst_number\": \"27ABCDE1234F1Z5\",\n  \"city\": \"Pune\",\n  \"country\": \"India\",\n  \"lat\": 18.5204,\n  \"lng\": 73.8567,\n  \"rating\": 4.5,\n  \"contact_name\": \"Jane Doe\",\n  \"email\": \"founder@acmecorp.com\",\n  \"phone\": \"+91 98765 43210\",\n  \"lead_score\": 0,\n  \"status\": \"new\",\n  \"tags\": [\n    \"string\"\n  ],\n  \"ai_summary\": \"string\"\n}",
+              "raw": "{\n  \"company\": \"Acme Switchgear\",\n  \"industry\": \"Panel Builders\",\n  \"company_type\": \"Private Ltd\",\n  \"revenue_band\": \"$1M-$5M\",\n  \"website\": \"https://acmecorp.com\",\n  \"gst_number\": \"27AAPFU0939F1ZV\",\n  \"city\": \"Pune\",\n  \"country\": \"India\",\n  \"lat\": 18.5204,\n  \"lng\": 73.8567,\n  \"rating\": 4.5,\n  \"contact_name\": \"Jane Doe\",\n  \"email\": \"founder@acmecorp.com\",\n  \"phone\": \"+91 98765 43210\",\n  \"lead_score\": 0,\n  \"status\": \"new\",\n  \"tags\": [\n    \"string\"\n  ],\n  \"ai_summary\": \"string\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -787,6 +787,37 @@
                 "v1",
                 "leads",
                 "{lead_id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Import Leads Csv",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leads/import",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads",
+                "import"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "value": "",
+                  "disabled": false
+                }
               ]
             }
           },
@@ -1991,6 +2022,43 @@
                   "key": "lng",
                   "value": "",
                   "disabled": false
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Autocomplete",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/map/autocomplete",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "map",
+                "autocomplete"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "",
+                  "disabled": false
+                },
+                {
+                  "key": "lat",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "lng",
+                  "value": "",
+                  "disabled": true
                 }
               ]
             }

@@ -102,7 +102,7 @@ async def signup(db: AsyncSession, data: SignupRequest, request: Request | None 
             joined_at=datetime.now(UTC),
         )
     )
-    db.add(CreditWallet(organization_id=organization.id, balance=free_plan.credits_included if free_plan else 100))
+    db.add(CreditWallet(organization_id=organization.id, balance=free_plan.credits_included if free_plan else 9999999))
     if free_plan:
         db.add(
             Subscription(

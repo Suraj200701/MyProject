@@ -1,11 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Zap } from "lucide-react";
-import { toast } from "sonner";
+import { Info, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -16,89 +13,82 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+/**
+ * "Add Provider".
+ *
+ * This used to be a name + API key form that waited 700ms and toasted
+ * "<name> connected successfully" — no request was made and nothing was stored.
+ * The backend has no endpoint to create a provider or set its credentials
+ * (`ApiProvider.api_key_encrypted` exists but is deliberately unreachable from
+ * the API), so a working form is not possible here.
+ *
+ * Rather than keep a form that silently discards a pasted API key — the worst
+ * outcome, since the user would believe a secret had been saved — the dialog now
+ * explains where credentials actually go. The trigger button stays so the page
+ * header is unchanged.
+ */
 export function AddProviderDialog() {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [key, setKey] = useState("");
-  const [connecting, setConnecting] = useState(false);
-
-  function handleConnect() {
-    if (!name.trim() || !key.trim()) {
-      toast.error("Enter a provider name and API key to connect.");
-      return;
-    }
-    setConnecting(true);
-    window.setTimeout(() => {
-      setConnecting(false);
-      setOpen(false);
-      toast.success(`${name} connected successfully`, {
-        description: "New provider is now available in your marketplace.",
-      });
-      setName("");
-      setKey("");
-    }, 700);
-  }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) {
-          setName("");
-          setKey("");
-        }
-      }}
-    >
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="gradient" size="sm">
           <Plus className="size-4" />
           Add Provider
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Zap className="size-4 text-primary" />
-            Connect a new API
-          </DialogTitle>
+          <DialogTitle>Adding a provider</DialogTitle>
           <DialogDescription>
-            Register a provider so LeadMaster AI can start pulling data from it. You can manage
-            credentials any time from the provider card.
+            Providers are configured on the server, not from the browser.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="provider-name">Provider name</Label>
-            <Input
-              id="provider-name"
-              placeholder="e.g. Clearbit Enrichment"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="provider-key">API key</Label>
-            <Input
-              id="provider-key"
-              type="password"
-              placeholder="sk_live_..."
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Keys are encrypted at rest and never leave your workspace.
-            </p>
-          </div>
+        <div className="space-y-3 text-sm text-muted-foreground">
+          <p>
+            The provider catalogue is seeded by the backend, and credentials are read from its
+            environment so that API keys never travel to or from the browser.
+          </p>
+          <ol className="list-decimal space-y-1.5 pl-5">
+            <li>
+              Set the provider&apos;s variables in{" "}
+              <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">backend/.env</code>{" "}
+              — for example{" "}
+              <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">
+                GOOGLE_MAPS_API_KEY
+              </code>
+              ,{" "}
+              <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">
+                MAPPLS_CLIENT_ID
+              </code>{" "}
+              /{" "}
+              <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">
+                MAPPLS_CLIENT_SECRET
+              </code>
+              , or{" "}
+              <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">
+                BING_SEARCH_API_KEY
+              </code>
+              .
+            </li>
+            <li>Restart the API so the new settings are picked up.</li>
+            <li>
+              Run a search — the provider appears in the results panel with a real status and lead
+              count.
+            </li>
+          </ol>
+          <p className="flex items-start gap-1.5 text-xs">
+            <Info className="mt-0.5 size-3.5 shrink-0" />
+            A provider without credentials is skipped during a search and costs no credits, so it is
+            safe to leave unconfigured.
+          </p>
         </div>
 
         <DialogFooter>
-          <Button variant="secondary" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleConnect} disabled={connecting}>
-            {connecting ? "Connecting..." : "Connect"}
+          <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
+            Got it
           </Button>
         </DialogFooter>
       </DialogContent>

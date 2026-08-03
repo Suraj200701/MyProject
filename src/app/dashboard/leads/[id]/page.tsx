@@ -1,50 +1,83 @@
+"use client";
+
+import * as React from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { formatDistanceToNowStrict } from "date-fns";
+import { toast } from "sonner";
 import {
+  AlertCircle,
   ArrowLeft,
   Building2,
+  Check,
   Copy,
   ExternalLink,
   Globe,
+  Loader2,
   Mail,
   MapPin,
   Phone,
   ScanLine,
   Sparkles,
-  Tag as TagIcon,
 } from "lucide-react";
 
-import { mockLeads } from "@/lib/mock-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CompanyAvatar, RatingStars, ScoreBadge, StatusBadge } from "@/components/leads/lead-badges";
 import { LeadNotes } from "@/components/leads/lead-notes";
+import { ApiError, errorMessage } from "@/lib/api/client";
+import { exportsApi } from "@/lib/api/endpoints";
+import { useLead } from "@/lib/api/queries";
 
-const TIMELINE_TEMPLATE = [
-  { label: "Discovered via {provider}", at: "2026-07-17T08:00:00.000Z" },
-  { label: "AI lead score calculated", at: "2026-07-17T08:05:00.000Z" },
-  { label: "Added to lead database", at: "2026-07-18T09:00:00.000Z" },
-  { label: "Contact details enriched", at: "2026-07-23T14:30:00.000Z" },
-];
+/** Normalizes a stored website value into something safe to put in an href. */
+function websiteHref(website: string): string {
+  if (!website) return "";
+  return /^https?:\/\//i.test(website) ? website : `https://${website}`;
+}
 
-const SEARCH_HISTORY_TEMPLATE = [
-  { label: "{industry} in {city}", resultsHint: "surfaced this lead" },
-];
+export default function LeadProfilePage() {
+  const params = useParams<{ id: string }>();
+  const leadId = params?.id;
+  const { data, isPending, isError, error } = useLead(leadId);
+  const [exporting, setExporting] = React.useState(false);
 
-export default async function LeadProfilePage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const lead = mockLeads.find((l) => l.id === id);
+  if (isPending) {
+    return (
+      <div className="space-y-5">
+        <Skeleton className="h-5 w-32" />
+        <Skeleton className="h-16 w-full max-w-md" />
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          <div className="space-y-5 lg:col-span-2">
+            <Skeleton className="h-56 rounded-xl" />
+            <Skeleton className="h-44 rounded-xl" />
+            <Skeleton className="h-32 rounded-xl" />
+          </div>
+          <div className="space-y-5">
+            <Skeleton className="h-56 rounded-xl" />
+            <Skeleton className="h-56 rounded-xl" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  if (!lead) {
+  if (isError || !data) {
+    // A 404 means the lead genuinely isn't in this organization; anything else
+    // is a transport/server problem and shouldn't claim the lead was deleted.
+    const notFound = error instanceof ApiError && error.isNotFound;
     return (
       <div>
         <EmptyState
-          icon={Building2}
-          title="Lead not found"
-          description="This lead may have been removed or the link is incorrect."
-          actionLabel="Back to Lead Database"
+          icon={notFound ? Building2 : AlertCircle}
+          title={notFound ? "Lead not found" : "Couldn't load this lead"}
+          description={
+            notFound
+              ? "This lead may have been removed, or the link is incorrect."
+              : errorMessage(error)
+          }
         />
         <div className="mt-4 flex justify-center">
           <Button asChild variant="outline" size="sm">
@@ -56,6 +89,31 @@ export default async function LeadProfilePage({ params }: { params: Promise<{ id
         </div>
       </div>
     );
+  }
+
+  const { lead, notes, activities } = data;
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const created = await exportsApi.create({
+        resource: "leads",
+        format: "csv",
+        scope: "selected",
+        lead_ids: [lead.id],
+        file_name: lead.company.replace(/[^\w-]+/g, "_").slice(0, 60) || "lead",
+      });
+      if (created.status !== "ready") {
+        toast.success("Export queued — track it in the Export Center.");
+        return;
+      }
+      window.location.href = await exportsApi.downloadUrl(created.id);
+      toast.success("Export ready.");
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -74,27 +132,33 @@ export default async function LeadProfilePage({ params }: { params: Promise<{ id
           <div>
             <h1 className="text-xl font-semibold tracking-tight">{lead.company}</h1>
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
-              <Badge variant="outline">{lead.industry}</Badge>
+              {lead.industry ? <Badge variant="outline">{lead.industry}</Badge> : null}
               <StatusBadge status={lead.status} />
               <ScoreBadge score={lead.leadScore} />
-              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                <MapPin className="size-3" />
-                {lead.city}, {lead.country}
-              </span>
+              {lead.city || lead.country ? (
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <MapPin className="size-3" />
+                  {[lead.city, lead.country].filter(Boolean).join(", ")}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm">
-            <Mail className="size-3.5" />
-            Contact
+          {/* Opens the user's mail client — a real action, and the only one
+              possible: the backend has no outbound-email-to-lead endpoint. */}
+          <Button asChild variant="secondary" size="sm" disabled={!lead.email}>
+            <a href={lead.email ? `mailto:${lead.email}` : undefined}>
+              <Mail className="size-3.5" />
+              Contact
+            </a>
           </Button>
-          <Button variant="secondary" size="sm">
-            <TagIcon className="size-3.5" />
-            Add Note
-          </Button>
-          <Button variant="outline" size="sm">
-            <ExternalLink className="size-3.5" />
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting}>
+            {exporting ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <ExternalLink className="size-3.5" />
+            )}
             Export
           </Button>
         </div>
@@ -109,24 +173,32 @@ export default async function LeadProfilePage({ params }: { params: Promise<{ id
             <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <InfoRow label="Company Type" value={lead.companyType} />
               <InfoRow label="Revenue" value={lead.revenue} />
-              <InfoRow label="GST Number" value={lead.gst ?? "Not detected"} />
-              <InfoRow label="Source Provider" value={lead.provider} />
+              <InfoRow label="GST Number" value={lead.gst ?? ""} fallback="Not detected" />
+              <InfoRow label="Source Provider" value={lead.provider} fallback="Manual entry" />
               <div>
                 <p className="text-xs text-muted-foreground">Website</p>
-                <a
-                  href={`https://${lead.website}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-0.5 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-                >
-                  {lead.website}
-                  <ExternalLink className="size-3" />
-                </a>
+                {lead.website ? (
+                  <a
+                    href={websiteHref(lead.website)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-0.5 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                  >
+                    {lead.website}
+                    <ExternalLink className="size-3" />
+                  </a>
+                ) : (
+                  <p className="mt-0.5 text-sm text-muted-foreground">—</p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Rating</p>
                 <div className="mt-0.5">
-                  <RatingStars rating={lead.rating} />
+                  {lead.rating > 0 ? (
+                    <RatingStars rating={lead.rating} />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">—</p>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -143,26 +215,28 @@ export default async function LeadProfilePage({ params }: { params: Promise<{ id
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-1.5">
-                <Sparkles className="size-4 text-primary" />
-                AI Summary
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-lg border border-primary/20 bg-primary/[0.05] p-4">
-                <p className="text-sm leading-relaxed text-foreground/90">{lead.aiSummary}</p>
-              </div>
-            </CardContent>
-          </Card>
+          {lead.aiSummary ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-1.5">
+                  <Sparkles className="size-4 text-primary" />
+                  AI Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-lg border border-primary/20 bg-primary/[0.05] p-4">
+                  <p className="text-sm leading-relaxed text-foreground/90">{lead.aiSummary}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader>
               <CardTitle>Notes</CardTitle>
             </CardHeader>
             <CardContent>
-              <LeadNotes leadId={lead.id} />
+              <LeadNotes leadId={lead.id} notes={notes} />
             </CardContent>
           </Card>
 
@@ -171,32 +245,23 @@ export default async function LeadProfilePage({ params }: { params: Promise<{ id
               <CardTitle>Tags</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-wrap items-center gap-2">
-              {lead.tags.map((tag) => (
-                <Badge key={tag} variant="primary">
-                  {tag}
-                </Badge>
-              ))}
-              <button className="rounded-full border border-dashed border-border px-2.5 py-0.5 text-xs text-muted-foreground hover:border-border-strong hover:text-foreground transition-colors">
-                + Add tag
-              </button>
+              {lead.tags.length > 0 ? (
+                lead.tags.map((tag) => (
+                  <Badge key={tag} variant="primary">
+                    {tag}
+                  </Badge>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">No tags on this lead.</p>
+              )}
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Search History</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {SEARCH_HISTORY_TEMPLATE.map((item, i) => (
-                <div key={i} className="flex items-center justify-between rounded-lg border border-border bg-surface-2/40 px-3 py-2">
-                  <p className="text-sm text-foreground">
-                    {item.label.replace("{industry}", lead.industry).replace("{city}", lead.city)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{item.resultsHint}</p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          {/* The "Search History" card was removed: it rendered a template
+              string ("{industry} in {city}") as though it were the search that
+              found this lead. `LeadOut` carries no search reference, so there is
+              nothing truthful to show. Restoring it needs `search_id` on the
+              lead detail response. */}
         </div>
 
         <div className="space-y-5">
@@ -207,8 +272,8 @@ export default async function LeadProfilePage({ params }: { params: Promise<{ id
             <CardContent>
               <div className="flex h-32 flex-col items-center justify-center gap-2 rounded-lg border border-border bg-grid bg-surface-2/40">
                 <MapPin className="size-5 text-primary" />
-                <p className="text-sm font-medium">{lead.city}</p>
-                <p className="text-xs text-muted-foreground">{lead.country}</p>
+                <p className="text-sm font-medium">{lead.city || "Unknown location"}</p>
+                <p className="text-xs text-muted-foreground">{lead.country || "—"}</p>
               </div>
               <Button asChild variant="outline" size="sm" className="mt-3 w-full">
                 <Link href="/dashboard/map">View on Map</Link>
@@ -221,22 +286,29 @@ export default async function LeadProfilePage({ params }: { params: Promise<{ id
               <CardTitle>Lead Timeline</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-0">
-                {TIMELINE_TEMPLATE.map((step, i) => (
-                  <div key={i} className="relative flex gap-3 pb-5 last:pb-0">
-                    {i < TIMELINE_TEMPLATE.length - 1 && (
-                      <span className="absolute left-[5px] top-3 h-full w-px bg-border" />
-                    )}
-                    <span className="relative z-10 mt-1.5 size-2.5 shrink-0 rounded-full bg-primary" />
-                    <div>
-                      <p className="text-sm text-foreground">{step.label.replace("{provider}", lead.provider)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatDistanceToNowStrict(new Date(step.at), { addSuffix: true })}
-                      </p>
+              {/* Real activity rows, written by the backend on create / status
+                  change / note added. This previously rendered four fixed steps
+                  with hardcoded July 2026 timestamps for every lead. */}
+              {activities.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
+              ) : (
+                <div className="space-y-0">
+                  {activities.map((step, i) => (
+                    <div key={step.id} className="relative flex gap-3 pb-5 last:pb-0">
+                      {i < activities.length - 1 && (
+                        <span className="absolute left-[5px] top-3 h-full w-px bg-border" />
+                      )}
+                      <span className="relative z-10 mt-1.5 size-2.5 shrink-0 rounded-full bg-primary" />
+                      <div>
+                        <p className="text-sm text-foreground">{step.description}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDistanceToNowStrict(new Date(step.created_at), { addSuffix: true })}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -249,17 +321,28 @@ export default async function LeadProfilePage({ params }: { params: Promise<{ id
                 <div className="flex size-9 items-center justify-center rounded-lg border border-border bg-surface-2">
                   <Globe className="size-4 text-muted-foreground" />
                 </div>
-                <a
-                  href={`https://${lead.website}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="truncate text-sm font-medium text-primary hover:underline"
-                >
-                  {lead.website}
-                </a>
+                {lead.website ? (
+                  <a
+                    href={websiteHref(lead.website)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="truncate text-sm font-medium text-primary hover:underline"
+                  >
+                    {lead.website}
+                  </a>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No website on file</p>
+                )}
               </div>
               <Button asChild variant="secondary" size="sm" className="mt-3 w-full">
-                <Link href="/dashboard/scanner">
+                {/* Pre-fills the scanner with this lead's domain. */}
+                <Link
+                  href={
+                    lead.website
+                      ? `/dashboard/scanner?url=${encodeURIComponent(lead.website)}`
+                      : "/dashboard/scanner"
+                  }
+                >
                   <ScanLine className="size-3.5" />
                   Scan Website
                 </Link>
@@ -272,27 +355,52 @@ export default async function LeadProfilePage({ params }: { params: Promise<{ id
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value, fallback = "—" }: { label: string; value: string; fallback?: string }) {
   return (
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-sm font-medium text-foreground">{value}</p>
+      <p className={value ? "mt-0.5 text-sm font-medium text-foreground" : "mt-0.5 text-sm text-muted-foreground"}>
+        {value || fallback}
+      </p>
     </div>
   );
 }
 
+/** Contact row with a copy button that actually copies. */
 function ContactRow({ icon: Icon, label, value }: { icon: typeof Mail; label: string; value: string }) {
+  const [copied, setCopied] = React.useState(false);
+
+  async function copy() {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard access is denied over plain HTTP on some browsers; say so
+      // rather than showing a success state that didn't happen.
+      toast.error("Couldn't copy — your browser blocked clipboard access.");
+    }
+  }
+
   return (
     <div className="flex items-center justify-between rounded-lg border border-border bg-surface-2/40 px-3 py-2.5">
       <div className="flex items-center gap-2.5">
         <Icon className="size-4 text-muted-foreground" />
         <div>
           <p className="text-xs text-muted-foreground">{label}</p>
-          <p className="text-sm text-foreground">{value}</p>
+          <p className={value ? "text-sm text-foreground" : "text-sm text-muted-foreground"}>
+            {value || "—"}
+          </p>
         </div>
       </div>
-      <button className="rounded-md p-1.5 text-muted-foreground hover:bg-surface-2 hover:text-foreground transition-colors">
-        <Copy className="size-3.5" />
+      <button
+        onClick={copy}
+        disabled={!value}
+        aria-label={`Copy ${label}`}
+        className="rounded-md p-1.5 text-muted-foreground hover:bg-surface-2 hover:text-foreground transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+      >
+        {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
       </button>
     </div>
   );

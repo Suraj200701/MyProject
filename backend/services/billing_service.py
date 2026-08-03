@@ -30,14 +30,23 @@ from models.user import User
 from payment import stripe_client
 from utils.exceptions import BadRequestError, NotFoundError
 
-# Mirrors src/components/billing/mock-data.ts CREDIT_PACKS so the frontend's
-# preset pack ids resolve to a stable price/credit amount server-side (the
-# client should never be trusted to send its own credit amount unchecked).
+# The credit top-up catalogue. Served to the frontend via
+# `GET /billing/credit-packs` so there is exactly one definition of what a pack
+# costs — the client is never trusted to send its own credit amount, and a
+# client-side copy of the price list would eventually disagree with this one.
 CREDIT_PACKS: dict[str, dict[str, int]] = {
     "c1": {"amount_cents": 2900, "credits": 1000},
     "c2": {"amount_cents": 11900, "credits": 5000},
     "c3": {"amount_cents": 39900, "credits": 20000},
 }
+
+def list_credit_packs() -> list[dict]:
+    """The purchasable credit packs, cheapest first."""
+    return [
+        {"id": pack_id, "credits": pack["credits"], "amount_cents": pack["amount_cents"]}
+        for pack_id, pack in sorted(CREDIT_PACKS.items(), key=lambda item: item[1]["amount_cents"])
+    ]
+
 
 # Fallback conversion rate for an arbitrary custom amount_cents that doesn't
 # match a preset pack: priced at the smallest pack's per-credit rate (no

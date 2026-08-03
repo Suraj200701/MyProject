@@ -1,7 +1,6 @@
-import { mockLeads } from "@/lib/mock-data";
 import type { Lead } from "@/lib/types";
 
-/** A lead positioned on the mock map canvas (0-100 percent coordinates). */
+/** A lead positioned on the map canvas (0-100 percent coordinates). */
 export interface PositionedLead extends Lead {
   x: number;
   y: number;
@@ -25,47 +24,72 @@ export const MAP_PROVIDERS = [
 
 export type MapProviderId = (typeof MAP_PROVIDERS)[number]["id"];
 
-export const MAP_INDUSTRIES = Array.from(new Set(mockLeads.map((l) => l.industry))).sort();
+export interface GeoBounds {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+  centerLat: number;
+  centerLng: number;
+}
 
-const lats = mockLeads.map((l) => l.lat);
-const lngs = mockLeads.map((l) => l.lng);
-const MIN_LAT = Math.min(...lats);
-const MAX_LAT = Math.max(...lats);
-const MIN_LNG = Math.min(...lngs);
-const MAX_LNG = Math.max(...lngs);
-const CENTER_LAT = lats.reduce((a, b) => a + b, 0) / lats.length;
-const CENTER_LNG = lngs.reduce((a, b) => a + b, 0) / lngs.length;
+/**
+ * Geographic bounds of a set of leads.
+ *
+ * Computed from real data at call time. This module previously derived its bounds
+ * and centre from the fixture **at import time**, so the projection was
+ * calibrated to invented coordinates and could never fit a real lead set.
+ *
+ * Leads without coordinates are excluded: the mapper marks those `NaN` rather
+ * than 0/0, which would otherwise drop a pin in the Gulf of Guinea.
+ */
+export function computeBounds(leads: Lead[]): GeoBounds | null {
+  const located = leads.filter((l) => Number.isFinite(l.lat) && Number.isFinite(l.lng));
+  if (located.length === 0) return null;
+
+  const lats = located.map((l) => l.lat);
+  const lngs = located.map((l) => l.lng);
+  return {
+    minLat: Math.min(...lats),
+    maxLat: Math.max(...lats),
+    minLng: Math.min(...lngs),
+    maxLng: Math.max(...lngs),
+    centerLat: lats.reduce((a, b) => a + b, 0) / lats.length,
+    centerLng: lngs.reduce((a, b) => a + b, 0) / lngs.length,
+  };
+}
 
 /** Pad-and-clamp linear scaling from a lat/lng pair into 0-100 canvas percent space. */
-function project(lat: number, lng: number): { x: number; y: number } {
-  const rawX = MAX_LNG === MIN_LNG ? 50 : ((lng - MIN_LNG) / (MAX_LNG - MIN_LNG)) * 100;
-  const rawY = MAX_LAT === MIN_LAT ? 50 : ((MAX_LAT - lat) / (MAX_LAT - MIN_LAT)) * 100;
+export function project(lat: number, lng: number, bounds: GeoBounds): { x: number; y: number } {
+  const { minLat, maxLat, minLng, maxLng } = bounds;
+  const rawX = maxLng === minLng ? 50 : ((lng - minLng) / (maxLng - minLng)) * 100;
+  // Latitude increases northward but canvas y increases downward, hence the flip.
+  const rawY = maxLat === minLat ? 50 : ((maxLat - lat) / (maxLat - minLat)) * 100;
   return { x: 4 + (rawX / 100) * 92, y: 4 + (rawY / 100) * 92 };
 }
 
 /**
- * Cosmetic pseudo-distance in "km" from the fixed mock search center.
- * Scaled down (0.15x) from the raw lat/lng delta so the spread of mock leads
- * (generated across several degrees for map canvas variety) maps onto the
- * 5-150km radius slider range instead of the true ~100s-1000s km spread.
+ * Positions leads on the canvas.
+ *
+ * `distanceKm` is expected to already be on each lead — it comes from
+ * `POST /map/nearby-leads`, which computes real haversine distance server-side.
+ * The previous version invented it from a lat/lng delta scaled by an arbitrary
+ * 0.15x so the fixture's spread would fit the radius slider's range.
  */
-function pseudoDistanceKm(lat: number, lng: number): number {
-  const dLat = (lat - CENTER_LAT) * 111;
-  const dLng = (lng - CENTER_LNG) * 111 * Math.cos((CENTER_LAT * Math.PI) / 180);
-  return Math.round(Math.sqrt(dLat * dLat + dLng * dLng) * 0.15);
+export function positionLeads(
+  leads: (Lead & { distanceKm?: number })[],
+  bounds: GeoBounds,
+): PositionedLead[] {
+  return leads
+    .filter((l) => Number.isFinite(l.lat) && Number.isFinite(l.lng))
+    .map((lead) => {
+      const { x, y } = project(lead.lat, lead.lng, bounds);
+      return { ...lead, x, y, distanceKm: lead.distanceKm ?? 0 };
+    });
 }
 
-export const MAP_CENTER = project(CENTER_LAT, CENTER_LNG);
-
-let cachedPositionedLeads: PositionedLead[] | null = null;
-
-export function getPositionedLeads(): PositionedLead[] {
-  if (cachedPositionedLeads) return cachedPositionedLeads;
-  cachedPositionedLeads = mockLeads.map((lead) => {
-    const { x, y } = project(lead.lat, lead.lng);
-    return { ...lead, x, y, distanceKm: pseudoDistanceKm(lead.lat, lead.lng) };
-  });
-  return cachedPositionedLeads;
+export function mapCenter(bounds: GeoBounds): { x: number; y: number } {
+  return project(bounds.centerLat, bounds.centerLng, bounds);
 }
 
 export function scoreTone(score: number): "success" | "warning" | "danger" {
@@ -92,7 +116,9 @@ export function buildClusters(leads: PositionedLead[], cols = 6, rows = 5): MapC
   return Array.from(bins.entries()).map(([key, bucketLeads]) => {
     const x = bucketLeads.reduce((sum, l) => sum + l.x, 0) / bucketLeads.length;
     const y = bucketLeads.reduce((sum, l) => sum + l.y, 0) / bucketLeads.length;
-    const avgScore = Math.round(bucketLeads.reduce((sum, l) => sum + l.leadScore, 0) / bucketLeads.length);
+    const avgScore = Math.round(
+      bucketLeads.reduce((sum, l) => sum + l.leadScore, 0) / bucketLeads.length,
+    );
     return { key, x, y, count: bucketLeads.length, avgScore, leads: bucketLeads };
   });
 }

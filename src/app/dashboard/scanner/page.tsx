@@ -1,8 +1,12 @@
 "use client";
 
 import * as React from "react";
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { ScanLine, Search } from "lucide-react";
+import { toast } from "sonner";
+import { ScanLine, Search, Loader2 } from "lucide-react";
+
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Input } from "@/components/ui/input";
@@ -11,65 +15,115 @@ import { ScanStepper } from "@/components/scanner/scan-stepper";
 import { BrowserMock } from "@/components/scanner/browser-mock";
 import { ScanReportView } from "@/components/scanner/scan-report";
 import { RecentScans } from "@/components/scanner/recent-scans";
-import {
-  EXAMPLE_URLS,
-  INITIAL_RECENT_SCANS,
-  SCAN_STAGES,
-  generateScanReport,
-  normalizeUrl,
-} from "@/components/scanner/mock-data";
-import type { RecentScan, ScanReport, ScanStageState } from "@/components/scanner/types";
+import { SCAN_STAGES, normalizeUrl, toRecentScan, toScanReport } from "@/components/scanner/scan-adapter";
+import type { ScanReport, ScanStageState } from "@/components/scanner/types";
+import { ApiError, errorMessage } from "@/lib/api/client";
+import { useScanWebsite, useScans } from "@/lib/api/queries";
 
 type ScanPhase = "idle" | "scanning" | "report";
 
-function delay(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
-
-export default function ScannerPage() {
+/**
+ * Website Scanner, backed by `POST /scan-website`.
+ *
+ * The scan is a single server-side operation (fetch through the SSRF guard, then
+ * extract), so there is no per-stage progress to subscribe to. The stepper still
+ * advances while the request is in flight — honest feedback about work genuinely
+ * happening — but it no longer *reports* fabricated per-stage timings, and every
+ * value in the report now comes from the response rather than from a PRNG seeded
+ * on the domain.
+ *
+ * Recent scans come from `GET /scans` rather than a seeded list.
+ */
+function ScannerPageContent() {
+  const searchParams = useSearchParams();
   const [url, setUrl] = React.useState("");
   const [phase, setPhase] = React.useState<ScanPhase>("idle");
   const [stages, setStages] = React.useState<ScanStageState[]>(
     SCAN_STAGES.map((s) => ({ ...s, status: "pending", durationMs: 0 })),
   );
   const [report, setReport] = React.useState<ScanReport | null>(null);
-  const [recentScans, setRecentScans] = React.useState<RecentScan[]>(INITIAL_RECENT_SCANS);
+
+  const { data: scansPage } = useScans({ page_size: 8 });
+  const scanWebsite = useScanWebsite();
+
+  const recentScans = React.useMemo(() => (scansPage?.items ?? []).map(toRecentScan), [scansPage]);
 
   const overallProgress = Math.round(
     (stages.filter((s) => s.status === "done").length / stages.length) * 100,
   );
 
-  async function runScan(rawUrl: string) {
-    if (!rawUrl.trim() || phase === "scanning") return;
-    const { url: fullUrl } = normalizeUrl(rawUrl);
-    setUrl(rawUrl);
-    setPhase("scanning");
-    setReport(null);
+  const runScan = React.useCallback(
+    async (rawUrl: string) => {
+      if (!rawUrl.trim() || scanWebsite.isPending) return;
+      const { url: fullUrl } = normalizeUrl(rawUrl);
+      setUrl(rawUrl);
+      setPhase("scanning");
+      setReport(null);
+      setStages(SCAN_STAGES.map((s) => ({ ...s, status: "pending", durationMs: 0 })));
 
-    const freshStages: ScanStageState[] = SCAN_STAGES.map((s) => ({ ...s, status: "pending", durationMs: 0 }));
-    setStages(freshStages);
+      /**
+       * Walk the stepper while the request runs.
+       *
+       * A progress *indicator*, not a measurement: the server does one operation
+       * and reports one duration. The interval is cleared the moment the response
+       * lands, so the stepper never claims to have finished work that hasn't.
+       */
+      let cursor = 0;
+      const ticker = setInterval(() => {
+        setStages((prev) =>
+          prev.map((s, i) =>
+            i < cursor ? { ...s, status: "done" } : i === cursor ? { ...s, status: "active" } : s,
+          ),
+        );
+        // Hold on the last stage rather than looping back to the first.
+        cursor = Math.min(cursor + 1, SCAN_STAGES.length - 1);
+      }, 400);
 
-    const scanStart = Date.now();
-    const stageDurations: Record<string, number> = {};
+      try {
+        const scan = await scanWebsite.mutateAsync(fullUrl);
+        clearInterval(ticker);
+        setStages((prev) => prev.map((s) => ({ ...s, status: "done" })));
+        setReport(toScanReport(scan));
+        setPhase("report");
 
-    for (let i = 0; i < SCAN_STAGES.length; i++) {
-      const stageStart = Date.now();
-      setStages((prev) => prev.map((s, idx) => (idx === i ? { ...s, status: "active" } : s)));
-      await delay(500 + Math.random() * 500);
-      const dur = Date.now() - stageStart;
-      stageDurations[SCAN_STAGES[i].id] = dur;
-      setStages((prev) => prev.map((s, idx) => (idx === i ? { ...s, status: "done", durationMs: dur } : s)));
-    }
+        if (scan.confidence_score === 0) {
+          // A persisted "scan failed" row: the site was unreachable. The report
+          // shows that truthfully instead of displaying invented findings.
+          toast.warning("That site couldn't be reached.", {
+            description: "The scan was recorded, but no details could be extracted.",
+          });
+        }
+      } catch (error) {
+        clearInterval(ticker);
+        setPhase("idle");
+        setStages(SCAN_STAGES.map((s) => ({ ...s, status: "pending", durationMs: 0 })));
 
-    const scanDurationMs = Date.now() - scanStart;
-    const generated = generateScanReport(fullUrl, scanDurationMs, stageDurations);
-    setReport(generated);
-    setRecentScans((prev) => [
-      { id: generated.id, domain: generated.domain, confidence: generated.confidence, scannedAt: generated.scannedAt },
-      ...prev,
-    ].slice(0, 8));
-    setPhase("report");
-  }
+        if (error instanceof ApiError && error.isPaymentRequired) {
+          toast.error(error.message, { description: "Top up your credits to run more scans." });
+        } else if (error instanceof ApiError && error.status === 400) {
+          // The SSRF guard's message is the useful one (private address, bad
+          // scheme, unresolvable host), so surface it verbatim.
+          toast.error(error.message);
+        } else {
+          toast.error(errorMessage(error));
+        }
+      }
+    },
+    [scanWebsite],
+  );
+
+  /**
+   * Accepts `?url=` so the lead profile's "Scan Website" button can pre-fill this
+   * page. Fills the input rather than auto-scanning — a scan costs a credit, so
+   * it stays an explicit action.
+   */
+  const prefilled = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const incoming = searchParams.get("url");
+    if (!incoming || prefilled.current === incoming) return;
+    prefilled.current = incoming;
+    setUrl(incoming);
+  }, [searchParams]);
 
   function reset() {
     setPhase("idle");
@@ -77,6 +131,8 @@ export default function ScannerPage() {
     setReport(null);
     setStages(SCAN_STAGES.map((s) => ({ ...s, status: "pending", durationMs: 0 })));
   }
+
+  const scanning = phase === "scanning";
 
   return (
     <div>
@@ -92,27 +148,18 @@ export default function ScannerPage() {
           onKeyDown={(e) => e.key === "Enter" && runScan(url)}
           placeholder="https://company-website.com"
           className="h-11"
-          disabled={phase === "scanning"}
+          disabled={scanning}
         />
-        <Button size="lg" onClick={() => runScan(url)} disabled={phase === "scanning" || !url.trim()}>
+        <Button size="lg" onClick={() => runScan(url)} disabled={scanning || !url.trim()}>
           <ScanLine className="size-4" />
-          {phase === "scanning" ? "Scanning…" : "Scan Website"}
+          {scanning ? "Scanning…" : "Scan Website"}
         </Button>
       </div>
 
-      {phase === "idle" && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {EXAMPLE_URLS.map((example) => (
-            <button
-              key={example}
-              onClick={() => runScan(example)}
-              className="rounded-full border border-border bg-surface-2/60 px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
-            >
-              {example.replace("https://", "")}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* The example-URL chips are gone: they pointed at invented domains
+          (acmesupplies.com, nova-retailgroup.com) that don't resolve, so with a
+          real scanner every one would fail. Recent scans in the sidebar serve
+          the same "try one" purpose with entries that exist. */}
 
       <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2">
@@ -127,7 +174,7 @@ export default function ScannerPage() {
               </motion.div>
             )}
 
-            {phase === "scanning" && (
+            {scanning && (
               <motion.div
                 key="scanning"
                 initial={{ opacity: 0 }}
@@ -155,5 +202,26 @@ export default function ScannerPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+
+/**
+ * Suspense boundary for `useSearchParams()`.
+ *
+ * Without it, `next build` fails to prerender this route:
+ * "useSearchParams() should be wrapped in a suspense boundary".
+ */
+export default function ScannerPage() {
+  return (
+    <Suspense
+      fallback={
+    <div className="flex min-h-[60vh] items-center justify-center">
+      <Loader2 className="size-5 animate-spin text-primary" />
+    </div>
+      }
+    >
+      <ScannerPageContent />
+    </Suspense>
   );
 }

@@ -6,7 +6,21 @@ from httpx import AsyncClient
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
-async def test_search_persists_real_leads(client: AsyncClient, signed_up_user):
+async def test_search_completes_and_is_recorded_without_any_provider(
+    client: AsyncClient, signed_up_user
+):
+    """A search with no provider credentials completes honestly with zero results.
+
+    This previously asserted `results_count > 0`, which only held because the
+    search service synthesized leads from a static pool. That generator has been
+    removed, so with nothing configured the correct outcome is a completed search
+    that produced nothing — the request still succeeds and is still recorded, and
+    every provider reports why it could not run.
+
+    The positive path (a configured provider actually sourcing leads) is covered
+    in tests/test_lead_sources.py, where provider HTTP is mocked at the adapter
+    boundary.
+    """
     _, headers = signed_up_user
 
     search_resp = await client.post(
@@ -15,27 +29,30 @@ async def test_search_persists_real_leads(client: AsyncClient, signed_up_user):
     assert search_resp.status_code == 201
     body = search_resp.json()
     assert body["status"] == "completed"
-    assert body["results_count"] > 0
+    assert body["results_count"] == 0
     assert len(body["provider_runs"]) > 0
 
     leads_resp = await client.get("/api/v1/leads", headers=headers)
-    assert leads_resp.json()["meta"]["total_items"] > 0
+    assert leads_resp.json()["meta"]["total_items"] == 0
 
     history_resp = await client.get("/api/v1/search/history", headers=headers)
     assert history_resp.json()["meta"]["total_items"] == 1
 
 
-async def test_website_scan_is_deterministic_per_domain(client: AsyncClient, signed_up_user):
+async def test_website_scan_of_an_unresolvable_domain_is_refused(client: AsyncClient, signed_up_user):
+    """An unresolvable hostname is rejected rather than scanned.
+
+    This replaces a test that asserted two scans of the same domain returned
+    identical confidence scores — true only because the score came from an RNG
+    seeded on the domain. Scans now read the real page, so determinism follows
+    from page content and is asserted in tests/test_lead_sources.py against a
+    fixture site.
+    """
     _, headers = signed_up_user
 
-    first = await client.post("/api/v1/scan-website", headers=headers, json={"url": "example-corp.com"})
-    second = await client.post("/api/v1/scan-website", headers=headers, json={"url": "example-corp.com"})
-    assert first.status_code == 201
-    assert second.status_code == 201
-
-    # Same domain -> same seeded RNG -> same confidence score / GST / social findings.
-    assert first.json()["confidence_score"] == second.json()["confidence_score"]
-    assert first.json()["gst_number"] == second.json()["gst_number"]
+    resp = await client.post("/api/v1/scan-website", headers=headers, json={"url": "example-corp.invalid"})
+    assert resp.status_code == 400
+    assert "could not be resolved" in resp.json()["message"]
 
 
 async def test_member_role_cannot_invite_team_members(client: AsyncClient):

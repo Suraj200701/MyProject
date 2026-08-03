@@ -11,6 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
+import { errorMessage } from "@/lib/api/client";
+import { authApi } from "@/lib/api/endpoints";
+import { useAuth } from "@/lib/auth/auth-context";
 import Link from "next/link";
 
 function GoogleIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -38,6 +41,7 @@ function GoogleIcon(props: React.SVGProps<SVGSVGElement>) {
 
 export default function SignupPage() {
   const router = useRouter();
+  const { signup, status } = useAuth();
   const [showPassword, setShowPassword] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [googleLoading, setGoogleLoading] = React.useState(false);
@@ -47,7 +51,26 @@ export default function SignupPage() {
   const [password, setPassword] = React.useState("");
   const [agreedToTerms, setAgreedToTerms] = React.useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  /**
+   * Bounce users who are *already* signed in when they land here.
+   *
+   * The `wasAlreadySignedIn` latch matters: without it this effect also fires
+   * the instant `signup()` succeeds, racing — and beating — the explicit
+   * `router.replace("/onboarding")` below, so new accounts skipped onboarding
+   * entirely. Only a session that existed on mount triggers the bounce.
+   */
+  const wasAlreadySignedIn = React.useRef<boolean | null>(null);
+  React.useEffect(() => {
+    if (status === "loading") return;
+    if (wasAlreadySignedIn.current === null) {
+      wasAlreadySignedIn.current = status === "authenticated";
+    }
+    if (wasAlreadySignedIn.current && status === "authenticated") {
+      router.replace("/dashboard");
+    }
+  }, [status, router]);
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!fullName || !email || !company || !password) {
       toast.error("Please fill in all fields.");
@@ -62,20 +85,31 @@ export default function SignupPage() {
       return;
     }
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      // Signup creates the user, their organization, and a session in one call,
+      // so the user is already authenticated when onboarding starts.
+      await signup({ email, password, fullName, companyName: company });
       toast.success("Account created — let's get you set up.");
-      router.push("/onboarding");
-    }, 1200);
+      router.replace("/onboarding");
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function handleGoogle() {
+  async function handleGoogle() {
     setGoogleLoading(true);
-    setTimeout(() => {
+    // Probe first — see the note in the login page's handler.
+    const { available, reason } = await authApi.isGoogleOAuthAvailable();
+    if (!available) {
       setGoogleLoading(false);
-      toast.success("Signed up with Google");
-      router.push("/onboarding");
-    }, 1200);
+      toast.error(reason ?? "Google sign-up isn't available on this server.", {
+        description: "Create an account with your email instead.",
+      });
+      return;
+    }
+    window.location.href = authApi.googleLoginUrl();
   }
 
   return (

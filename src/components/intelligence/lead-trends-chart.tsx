@@ -3,10 +3,13 @@
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { leadGrowthData } from "@/lib/mock-data";
+import { useLeadGrowth } from "@/lib/api/queries";
+import { AsyncContent } from "@/components/shared/async-content";
 import { ChartTooltip } from "./chart-tooltip";
 
 export function LeadTrendsChart() {
+  const { data, isPending, isError, error } = useLeadGrowth();
+  const leadGrowthData = data ?? [];
   const first = leadGrowthData[0]?.leads ?? 0;
   const last = leadGrowthData[leadGrowthData.length - 1]?.leads ?? 0;
   const delta = first > 0 ? ((last - first) / first) * 100 : 0;
@@ -24,6 +27,14 @@ export function LeadTrendsChart() {
           {delta.toFixed(0)}% vs last period
         </Badge>
       </CardHeader>
+      <AsyncContent
+        isPending={isPending}
+        isError={isError}
+        error={error}
+        isEmpty={leadGrowthData.length === 0}
+        emptyMessage="No trend data yet."
+        className="h-72 p-6"
+      >
       <CardContent className="pt-4">
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
@@ -73,6 +84,7 @@ export function LeadTrendsChart() {
           </ResponsiveContainer>
         </div>
       </CardContent>
+      </AsyncContent>
     </Card>
   );
 }

@@ -110,8 +110,51 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
 
-    # --- Google Maps ---
+    # --- Google Maps / Places ---
+    # One key serves both the Map module (geocoding) and the Google Places lead
+    # provider — enable "Places API (New)" on the same Google Cloud key.
     GOOGLE_MAPS_API_KEY: str = ""
+
+    # --- Mappls (MapmyIndia) — OAuth2 client credentials ---
+    MAPPLS_CLIENT_ID: str = ""
+    MAPPLS_CLIENT_SECRET: str = ""
+
+    # --- Bing Web Search ---
+    # NOTE: standalone Bing Search v7 was retired for new Azure subscriptions in
+    # Aug 2025. Usable only with a pre-existing resource; the endpoint is
+    # configurable so a compatible gateway can be substituted.
+    BING_SEARCH_API_KEY: str = ""
+    BING_SEARCH_ENDPOINT: str = "https://api.bing.microsoft.com/v7.0/search"
+
+    # --- AI lead scoring / summaries ---
+    # When unset, scoring falls back to a deterministic signal-based scorer
+    # (see services/enrichment/scoring.py) — that fallback is a real heuristic
+    # over real lead data, not placeholder output.
+    OPENAI_API_KEY: str = ""
+    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
+    AI_SCORING_MODEL: str = "gpt-4o-mini"
+    AI_SCORING_ENABLED: bool = True
+    AI_SCORING_TIMEOUT_SECONDS: float = 20.0
+    # Cap leads sent to the LLM per search, bounding token spend per request.
+    AI_SCORING_MAX_LEADS_PER_SEARCH: int = 25
+
+    # --- Provider HTTP behaviour ---
+    PROVIDER_TIMEOUT_SECONDS: float = 12.0
+
+    # --- Website crawl (Company Website Search + scanner) ---
+    SCANNER_ENABLED: bool = True
+    # Homepage plus this many minus one likely contact pages.
+    WEBSITE_CRAWL_MAX_PAGES: int = 3
+
+    # --- Lead deduplication ---
+    DEDUP_ENABLED: bool = True
+    # Similarity (0-1) above which two company names in the same city are
+    # treated as the same business. 0.88 is deliberately conservative: a false
+    # merge silently loses a real lead, which is worse than a duplicate.
+    DEDUP_NAME_SIMILARITY_THRESHOLD: float = 0.88
+
+    # --- CSV import ---
+    CSV_IMPORT_MAX_ROWS: int = 5000
 
     # --- Stripe ---
     STRIPE_SECRET_KEY: str = ""
@@ -179,6 +222,30 @@ class Settings(BaseSettings):
     # Master switch. When false, operations run without touching the wallet
     # (matches pre-metering behaviour) — lets metering be rolled out safely.
     CREDIT_METERING_ENABLED: bool = True
+    # Skip metering while ENVIRONMENT == "development".
+    #
+    # Local work shouldn't be throttled by a 100-credit Free plan, but this is a
+    # named flag rather than a bare `if development` so the behaviour is visible
+    # in config and can be switched off to exercise the real metering path
+    # locally. It cannot affect staging or production: those set
+    # ENVIRONMENT to something other than "development", and the check below
+    # requires both conditions.
+    CREDIT_METERING_DISABLED_IN_DEVELOPMENT: bool = True
+
+    @computed_field
+    @property
+    def credit_metering_active(self) -> bool:
+        """Whether wallet debits actually happen.
+
+        Single source of truth — `usage_service` consults this rather than
+        re-deriving the rule, so there is one place to reason about when credits
+        are and are not charged.
+        """
+        if not self.CREDIT_METERING_ENABLED:
+            return False
+        if self.ENVIRONMENT == "development" and self.CREDIT_METERING_DISABLED_IN_DEVELOPMENT:
+            return False
+        return True
 
     # --- Website scanner: outbound fetch safety (SSRF hardening) ---
     SCANNER_TIMEOUT_SECONDS: float = 15.0
@@ -209,6 +276,29 @@ class Settings(BaseSettings):
     @property
     def scanner_blocked_domains_set(self) -> set[str]:
         return {d.strip().lower().lstrip(".") for d in self.SCANNER_BLOCKED_DOMAINS.split(",") if d.strip()}
+
+    # --- Export Center ---
+    # Hard ceiling on rows in a single export. Bounds memory, file size and how
+    # much of the lead database one request can siphon out at once.
+    EXPORT_MAX_ROWS: int = 50_000
+    # Rejected after rendering if the generated file exceeds this. Separate from
+    # MAX_UPLOAD_SIZE_MB: an export is written by us, not uploaded by a client,
+    # and a wide 50k-row xlsx is legitimately larger than an upload should be.
+    EXPORT_MAX_FILE_SIZE_MB: int = 50
+    # At or above this row count the export is handed to Celery and the API
+    # responds 202 with status=processing. Below it, the file is generated
+    # inline and comes back 201 status=ready — which keeps the common
+    # "export this filtered view" case a single request.
+    EXPORT_ASYNC_ROW_THRESHOLD: int = 5_000
+    # Exports are disposable artifacts, not documents. After this they are
+    # marked EXPIRED and their bytes deleted by the cleanup task.
+    EXPORT_RETENTION_HOURS: int = 72
+    # Per-user budget on export *creation* (the expensive operation). Downloads
+    # and history reads are only subject to the global per-IP limiter.
+    EXPORT_RATE_LIMIT_PER_HOUR: int = 30
+    # Lifetime of a signed download token. Short: it travels in a URL, so it can
+    # land in browser history, proxy logs and Referer headers.
+    EXPORT_DOWNLOAD_TOKEN_TTL_SECONDS: int = 300
 
     # --- Frontend ---
     FRONTEND_URL: str = "http://localhost:3000"

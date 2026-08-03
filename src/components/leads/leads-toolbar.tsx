@@ -8,10 +8,10 @@ import {
   ChevronDown,
   Columns3,
   Download,
-  Plus,
+  Loader2,
   Search,
-  Tags,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 
@@ -35,12 +35,36 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { OPTIONAL_COLUMN_LABELS } from "@/components/leads/columns";
+import { errorMessage } from "@/lib/api/client";
+import { exportsApi } from "@/lib/api/endpoints";
+import {
+  useCountryAnalytics,
+  useDeleteLeads,
+  useImportLeadsCsv,
+  useTopIndustries,
+} from "@/lib/api/queries";
 
-const SAVED_VIEWS = ["All Leads", "High Value", "This Week", "Untouched"];
+/**
+ * Saved views, expressed as real filter presets.
+ *
+ * These used to be four labels that fired a toast and changed nothing. Each now
+ * maps to filters `GET /leads` actually supports, so switching a view re-queries
+ * the server. The former "This Week" view is gone: the endpoint has no
+ * date-range parameter, so it could only ever have been decorative.
+ */
+export interface SavedView {
+  label: string;
+  filters: { status?: string; minScore?: number };
+}
+
+export const SAVED_VIEWS: SavedView[] = [
+  { label: "All Leads", filters: {} },
+  { label: "High Value", filters: { minScore: 80 } },
+  { label: "Untouched", filters: { status: "new" } },
+];
 
 export function LeadsToolbar({
   table,
-  data,
   search,
   onSearchChange,
   industryFilter,
@@ -51,9 +75,10 @@ export function LeadsToolbar({
   onCountryFilterChange,
   activeView,
   onViewChange,
+  selectedIds,
+  onClearSelection,
 }: {
   table: Table<Lead>;
-  data: Lead[];
   search: string;
   onSearchChange: (value: string) => void;
   industryFilter: string;
@@ -63,18 +88,89 @@ export function LeadsToolbar({
   countryFilter: string;
   onCountryFilterChange: (value: string) => void;
   activeView: string;
-  onViewChange: (value: string) => void;
+  onViewChange: (view: SavedView) => void;
+  selectedIds: string[];
+  onClearSelection: () => void;
 }) {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [exporting, setExporting] = React.useState(false);
+
+  /**
+   * Filter options come from the analytics endpoints, which aggregate across the
+   * whole lead table. Deriving them from the rows on screen — as the previous
+   * version did from the full fixture — would mean the dropdowns only offered
+   * values from the current page.
+   */
+  const { data: industriesData } = useTopIndustries();
+  const { data: countriesData } = useCountryAnalytics();
   const industries = React.useMemo(
-    () => Array.from(new Set(data.map((lead) => lead.industry))).sort(),
-    [data],
+    () => (industriesData ?? []).map((i) => i.name).filter(Boolean).sort(),
+    [industriesData],
   );
   const countries = React.useMemo(
-    () => Array.from(new Set(data.map((lead) => lead.country))).sort(),
-    [data],
+    () => (countriesData ?? []).map((c) => c.country).filter(Boolean).sort(),
+    [countriesData],
   );
 
-  const selectedCount = table.getFilteredSelectedRowModel().rows.length;
+  const deleteLeads = useDeleteLeads();
+  const importCsv = useImportLeadsCsv();
+  const selectedCount = selectedIds.length;
+
+  async function handleBulkExport() {
+    setExporting(true);
+    try {
+      // A real export of exactly the selected rows, via the Export Center's
+      // scope="selected" mode, downloaded with a signed token.
+      const created = await exportsApi.create({
+        resource: "leads",
+        format: "csv",
+        scope: "selected",
+        lead_ids: selectedIds,
+      });
+      if (created.status !== "ready") {
+        toast.success("Export queued — track it in the Export Center.");
+        return;
+      }
+      const url = await exportsApi.downloadUrl(created.id);
+      window.location.href = url;
+      toast.success(`Exported ${created.row_count} lead${created.row_count === 1 ? "" : "s"}.`);
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function handleBulkDelete() {
+    deleteLeads.mutate(selectedIds, {
+      onSuccess: () => {
+        toast.success(`Deleted ${selectedCount} lead${selectedCount === 1 ? "" : "s"}.`);
+        onClearSelection();
+      },
+      onError: (error) => toast.error(errorMessage(error)),
+    });
+  }
+
+  function handleImportFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    // Reset immediately so picking the same file twice still fires a change.
+    event.target.value = "";
+    if (!file) return;
+
+    importCsv.mutate(file, {
+      onSuccess: (result) => {
+        const parts = [`Imported ${result.imported} lead${result.imported === 1 ? "" : "s"}`];
+        if (result.duplicates_skipped > 0) parts.push(`${result.duplicates_skipped} duplicate(s) skipped`);
+        if (result.invalid_rows > 0) parts.push(`${result.invalid_rows} row(s) had issues`);
+        toast.success(parts.join(" · "), {
+          description: result.errors.length
+            ? `First issue: line ${result.errors[0].line} — ${result.errors[0].message}`
+            : undefined,
+        });
+      },
+      onError: (error) => toast.error(errorMessage(error)),
+    });
+  }
 
   return (
     <div className="flex flex-col gap-3 mb-4">
@@ -143,14 +239,8 @@ export function LeadsToolbar({
             <DropdownMenuLabel>Saved views</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {SAVED_VIEWS.map((view) => (
-              <DropdownMenuItem
-                key={view}
-                onSelect={() => {
-                  onViewChange(view);
-                  toast.success(`Switched to "${view}" view`);
-                }}
-              >
-                {view}
+              <DropdownMenuItem key={view.label} onSelect={() => onViewChange(view)}>
+                {view.label}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -183,9 +273,31 @@ export function LeadsToolbar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Button variant="secondary" size="sm" className="ml-auto" onClick={() => toast.success("New view created")}>
-          <Plus className="size-3.5" />
-          Add Leads
+        {/* This button used to be labelled "Add Leads" and toasted "New view
+            created" — the wrong action, and a fake one. It now performs a real
+            CSV import via POST /leads/import, which the backend supported but
+            nothing in the UI reached. Rows are deduplicated and scored
+            server-side. */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={handleImportFile}
+        />
+        <Button
+          variant="secondary"
+          size="sm"
+          className="ml-auto"
+          disabled={importCsv.isPending}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {importCsv.isPending ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Upload className="size-3.5" />
+          )}
+          {importCsv.isPending ? "Importing..." : "Import CSV"}
         </Button>
       </div>
 
@@ -195,34 +307,27 @@ export function LeadsToolbar({
             {selectedCount} lead{selectedCount === 1 ? "" : "s"} selected
           </span>
           <div className="ml-auto flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => toast.success(`Exporting ${selectedCount} lead${selectedCount === 1 ? "" : "s"}`)}
-            >
-              <Download className="size-3.5" />
+            {/* The bulk "Tag" button was removed: there is no bulk-tag endpoint
+                and no UI to ask which tag to apply, so it could only ever have
+                shown a toast. Tags remain editable per lead on the profile. */}
+            <Button variant="secondary" size="sm" disabled={exporting} onClick={handleBulkExport}>
+              {exporting ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
               Export
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => toast.success(`Tagged ${selectedCount} lead${selectedCount === 1 ? "" : "s"}`)}
-            >
-              <Tags className="size-3.5" />
-              Tag
             </Button>
             <Button
               variant="destructive"
               size="sm"
-              onClick={() => {
-                toast.error(`Deleted ${selectedCount} lead${selectedCount === 1 ? "" : "s"}`);
-                table.resetRowSelection();
-              }}
+              disabled={deleteLeads.isPending}
+              onClick={handleBulkDelete}
             >
-              <Trash2 className="size-3.5" />
+              {deleteLeads.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
               Delete
             </Button>
-            <Button variant="ghost" size="icon" className="size-8" onClick={() => table.resetRowSelection()}>
+            <Button variant="ghost" size="icon" className="size-8" onClick={onClearSelection}>
               <X className="size-4" />
             </Button>
           </div>

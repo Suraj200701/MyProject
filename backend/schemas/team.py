@@ -44,3 +44,21 @@ class UpdateMemberRoleRequest(BaseModel):
 
 class AcceptInvitationRequest(BaseModel):
     token: str
+
+
+class PermissionOut(BaseModel):
+    """One capability, as seeded in the `permissions` table."""
+
+    code: str
+    description: str | None = None
+
+
+class RolePermissionsOut(BaseModel):
+    """Which capabilities a workspace role grants.
+
+    Read from `role_permissions` rather than restated in the client, so the
+    Roles & Permissions table cannot drift from what the API actually enforces.
+    """
+
+    role: str
+    permissions: list[str]

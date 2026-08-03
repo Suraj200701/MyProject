@@ -1,6 +1,15 @@
 export type ExportFormat = "CSV" | "Excel" | "PDF" | "JSON";
 export type ExportSource = "all" | "filtered" | "selected";
-export type ExportStatus = "ready" | "expired";
+
+/**
+ * Export lifecycle states.
+ *
+ * Extended beyond the original `"ready" | "expired"` because the backend has two
+ * more real states: `processing` (a large export queued to a worker) and `failed`
+ * (with a reason). Omitting them would mean rendering a queued export as though
+ * its file were already downloadable.
+ */
+export type ExportStatus = "ready" | "expired" | "processing" | "failed";
 
 export interface ExportRecord {
   id: string;
@@ -10,6 +19,10 @@ export interface ExportRecord {
   sizeLabel: string;
   createdAt: string;
   status: ExportStatus;
+  /** Populated only when `status` is "failed". */
+  errorMessage?: string;
+  /** What the export contains, from the backend's `resource` field. */
+  resource?: string;
 }
 
 export const EXPORT_FIELDS = [

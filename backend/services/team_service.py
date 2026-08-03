@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from auth.security import generate_token, hash_password, verify_password
 from models.enums import MemberStatus, RoleName
 from models.organization import Organization, OrganizationMember, TeamInvitation
-from models.user import Role, User, UserProfile, UserSession
+from models.user import Permission, Role, User, UserProfile, UserSession
 from notifications.email_service import send_team_invitation_email
 from schemas.team import MemberOut
 from utils.exceptions import BadRequestError, ConflictError, NotFoundError
@@ -243,3 +243,39 @@ async def remove_member(db: AsyncSession, organization_id: uuid.UUID, member_use
 
     await db.delete(member)
     await db.commit()
+
+
+async def list_role_permissions(db: AsyncSession) -> list[dict]:
+    """The role -> permission-code matrix, straight from the database.
+
+    `scripts/seed_data.py` seeds it and `api.deps.require_permission` enforces
+    it; exposing it read-only lets the Team page render the same matrix the API
+    actually applies instead of a copy that can silently drift.
+
+    `superadmin` is filtered out: it is a platform-operator flag, not a
+    workspace role a customer can assign.
+    """
+    stmt = (
+        select(Role)
+        .options(selectinload(Role.permissions))
+        .where(Role.name != RoleName.SUPERADMIN)
+    )
+    roles = (await db.execute(stmt)).scalars().all()
+
+    order = [RoleName.OWNER, RoleName.ADMIN, RoleName.MEMBER, RoleName.VIEWER]
+    roles = sorted(roles, key=lambda r: order.index(r.name) if r.name in order else len(order))
+
+    return [
+        {
+            "role": role.name.value,
+            "permissions": sorted(permission.code for permission in role.permissions),
+        }
+        for role in roles
+    ]
+
+
+async def list_permissions(db: AsyncSession) -> list[dict]:
+    """Every seeded capability, with its human-readable description."""
+    stmt = select(Permission).order_by(Permission.code)
+    permissions = (await db.execute(stmt)).scalars().all()
+    return [{"code": p.code, "description": p.description} for p in permissions]

@@ -1,16 +1,19 @@
 # Frontend ↔ Backend API Mapping
 
-The Next.js frontend currently runs entirely on static mock data
-(`src/lib/mock-data.ts`, plus a few page-local mock generators). This
-document maps every frontend page/component to the real backend
-endpoint(s) that should replace its mock data source, field-by-field,
-so wiring the frontend to the live API is a mechanical exercise rather
-than a design one.
+> **Status: integration complete.** Every page and component listed below now
+> calls the live API. The mock modules this document was written against
+> (`src/lib/mock-data.ts`, `src/components/team/mock-data.ts`,
+> `src/components/billing/mock-data.ts`) have been deleted. The tables are kept
+> as the field-by-field contract reference between the two sides — read
+> "mock → endpoint" rows as "view model ← endpoint".
 
-**Base URL:** `http://localhost:8000/api/v1` (dev) — set as
-`NEXT_PUBLIC_API_URL` and read via a small fetch wrapper (see
-[Suggested integration approach](#suggested-integration-approach) at the
-bottom).
+This document maps every frontend page/component to the backend endpoint(s)
+that feed it, field-by-field.
+
+**Base URL:** `http://127.0.0.1:8001/api/v1` in this repo's local setup — the
+backend's `.env` sets `PORT=8001`, and the frontend's `.env.local` sets
+`NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8001` (origin only, **no**
+`/api/v1` suffix — the API modules append the versioned path themselves).
 
 **Legend:** 🟢 direct replacement (shapes match closely) · 🟡 replacement
 needs light client-side transformation · 🔴 backend uses documented
@@ -105,7 +108,7 @@ All 6 stat cards, all 6 charts: 🟢 direct swap. All routes need `Authorization
 
 | Frontend behavior | Backend endpoint | Notes |
 |---|---|---|
-| Pin positions from `mockLeads[].lat/lng` | 🟡 `GET /leads` then filter client-side for non-null lat/lng, **or** `POST /map/nearby-leads` | The real `Lead`/`Company` rows created by `POST /search` today **don't populate lat/lng** (see backend README) — geocode them first via `POST /map/geocode` per company, or extend the search-generation placeholder to set coordinates. Until then, `nearby-leads` will return an empty list for freshly-searched orgs. |
+| Pin positions from `mockLeads[].lat/lng` | 🟢 `GET /leads` then filter client-side for non-null lat/lng, **or** `POST /map/nearby-leads` | Coordinates are now real: the Google Places and Mappls providers both populate `lat`/`lng` on the `Company` row, so searched leads appear on the map without a separate geocoding pass. Leads from providers that return no coordinates (Bing Search, Company Website Search) and from CSV import without `lat`/`lng` columns still have null coordinates — geocode those via `POST /map/geocode`. |
 | Radius slider → distance filtering | 🟢 `POST /map/nearby-leads` body `{lat, lng, radius_km, industry?}` | Real haversine math server-side — replaces the frontend's client-side `map-utils.ts` distance calc entirely. No API key needed. |
 | Provider toggle (Google Maps/Mappls/OSM) | — | 🔴 Cosmetic only in both frontend and backend — no functional difference server-side regardless of which is "selected". |
 | Address search / geocoding | 🟢 `POST /map/geocode` | Needs `GOOGLE_MAPS_API_KEY` configured. |
@@ -119,6 +122,8 @@ All 6 stat cards, all 6 charts: 🟢 direct swap. All routes need `Authorization
 | "Saved Views" dropdown | — | 🔴 No backend concept of saved views yet — cosmetic/local-only for now. |
 | Bulk delete | 🟢 `POST /leads/bulk-delete` | Body: `{ids: [...]}`. |
 | Column visibility toggle | — | Pure client-side UI state, no backend involvement either way. |
+| CSV import | 🟢 `POST /leads/import` | **New endpoint.** `multipart/form-data` with a single `file` field — not JSON. Send as `FormData`; do **not** set `Content-Type` manually, let the browser add the multipart boundary. Returns `{total_rows, imported, duplicates_skipped, invalid_rows, errors[], dedup_signals}`; render `errors[]` (each has `line`, `message`, `company`) as a per-row report, since a bad GSTIN/email/phone imports the lead *without* that field rather than failing the file. No frontend screen exists for this yet — it is the backend half of an import button the Lead Database page can add. |
+| Manual "Add Lead" | 🟢 `POST /leads` | Contract unchanged. Two additions, both opt-in by omission: leave `lead_score` at `0`/absent and the lead is scored by the same engine used for search results; omit `ai_summary` and one is generated from the lead's real attributes. Passing either explicitly is always respected. |
 
 ## 7. Lead Profile — `src/app/dashboard/leads/[id]/page.tsx`
 
@@ -173,18 +178,52 @@ All 6 stat cards, all 6 charts: 🟢 direct swap. All routes need `Authorization
 
 ## 10. Export Center — `src/app/dashboard/export/page.tsx`
 
-**No backend endpoints exist for this module yet** — `models/search.py`
-has an `Export` table and `schemas/search.py` was scoped for leads/search
-only; there's no `/exports` router. To wire this page up:
+**Fully implemented.** The `/exports` router generates real CSV / Excel / PDF /
+JSON files, logs them to the `exports` table, and serves them back over two
+authenticated download paths.
 
-- 🔴 Scope + build `POST /exports` (accepts source/format/columns, generates
-  a real CSV/Excel/PDF/JSON file via the existing `services/storage.py`
-  abstraction, creates an `Export` row) and `GET /exports` (paginated
-  history, mirroring the `Download Center` list). This is the one frontend
-  module with genuinely no backend counterpart today.
-- The `Export` table itself is ready (`organization_id`, `file_name`,
-  `format`, `row_count`, `size_bytes`, `status`, `storage_path`,
-  `expires_at`) — only the router/service layer is missing.
+| Frontend behavior | Backend endpoint | Notes |
+|---|---|---|
+| `ExportWizard` submit (`export-wizard.tsx`) | 🟢 `POST /exports` | One call covers the whole wizard. `source` → `scope` (`all`/`filtered`/`selected` — the union already matches), `format` → `format` (lowercase the label: `"Excel"` → `"excel"`), `fields` → `columns`, `fileName` → `file_name` (send the stem only; the extension is appended server-side). |
+| Wizard `fields` checkboxes (`EXPORT_FIELDS`) | 🟢 `columns` | The eight labels (`Company`, `Industry`, `City`, `Contact`, `Email`, `Phone`, `Lead Score`, `Status`) are accepted **verbatim** — no client-side mapping needed. API keys (`lead_score`) work too. Unmatched names come back in `ignored_columns` instead of failing. |
+| Wizard format picker (`FORMAT_META`) | 🟡 `GET /exports/formats` | Optional: serves formats, extensions, media types, the full lead-column catalogue and this deployment's limits, so the picker stops being a hardcoded list that can drift from the backend. |
+| Wizard progress bar | 🟡 `POST /exports` status | Small exports return `201` with `status="ready"` immediately, so the simulated progress steps can be dropped. Large ones return `202` with `status="processing"` — poll `GET /exports/{id}` and drive the bar from the real status. |
+| `DownloadCenter` list (`INITIAL_EXPORTS`) | 🟢 `GET /exports` | Paginated, newest first. Replace the `INITIAL_EXPORTS` mock; the response items map field-for-field onto `ExportRecord` (table below). |
+| Download button | 🟢 `POST /exports/{id}/download-token` then `GET /exports/{id}/download?token=…` | **Use the token flow in the browser.** A plain `<a href>` / `window.open` cannot set an `Authorization` header, and putting the access token in the URL would leak a long-lived credential into history and proxy logs. The returned `download_url` is ready to assign to `<a href>`. |
+| `ExportAnalyticsChart` | 🟢 `GET /dashboard/export-analytics` | Already existed; now returns real data, because exports finally write `Export` rows. |
+| "Expired" badge | 🟢 `status` field | Files are deleted after `EXPORT_RETENTION_HOURS` and the row flips to `expired`; `download_url` becomes `null`. |
+| — (new capability) | 🟢 `DELETE /exports/{id}` | No mock equivalent — lets a user remove an export and its file early. |
+
+**`ExportOut` field mapping** (`schemas/export.py`) vs. the frontend
+`ExportRecord` type (`src/components/export/types.ts`):
+
+| Frontend (`ExportRecord`) | Backend (`ExportOut`) | Match |
+|---|---|---|
+| `id` | `id` | 🟢 (UUID string instead of `exp-N`) |
+| `fileName` | `file_name` | 🟢 rename only |
+| `format` | `format` | 🟡 backend is lowercase (`"excel"`), frontend labels are title-case (`"Excel"`) — capitalize for display, and note `excel` ⇄ `.xlsx` |
+| `rowCount` | `row_count` | 🟢 rename only |
+| `sizeLabel` | `size_label` | 🟢 pre-formatted server-side (`"1.2 MB"`), so the client needs no byte-formatting logic. `size_bytes` is also returned for programmatic use. |
+| `createdAt` | `created_at` | 🟢 ISO-8601 |
+| `status` | `status` | 🟡 frontend union is `"ready" \| "expired"`; the backend adds `"processing"` and `"failed"` — extend the union, and render `error_message` for failures |
+| — | `resource` | 🔵 new: `leads` / `search_results` / `dashboard_report` / `analytics_report` |
+| — | `download_url` | 🔵 new: `null` unless currently downloadable. **Root-relative** (`/api/v1/exports/…`) — join it against the origin, not against an API base that already ends in `/api/v1`, or you get `/api/v1/api/v1/…` and a 404. |
+| — | `download_count`, `expires_at`, `error_message`, `ignored_columns` | 🔵 new |
+
+**Beyond the current UI.** The wizard only offers leads today, but the endpoint
+also exports `search_results` (pass `search_id`), `dashboard_report` and
+`analytics_report` — the latter two as multi-section documents (one worksheet per
+section in Excel, one page per section in PDF). Adding an "Export report" button
+to the dashboard or analytics pages needs no backend work.
+
+**RBAC.** Creating and deleting exports requires the `leads.export` permission:
+Owner, Admin and Member have it; **Viewer does not** and gets a `403`. Reading
+history needs only membership, so a viewer can see that an export happened. Hide
+or disable the wizard's submit for viewers to avoid a dead-end `403`.
+
+**Rate limiting.** Export creation is capped per user per hour
+(`EXPORT_RATE_LIMIT_PER_HOUR`, default 30) and returns `429`; downloads and
+history reads are not capped.
 
 ## 11. Lead Intelligence — `src/app/dashboard/intelligence/page.tsx`
 
@@ -220,11 +259,11 @@ only; there's no `/exports` router. To wire this page up:
 
 | Frontend section | Backend endpoint | Notes |
 |---|---|---|
-| Workspace info card | 🟡 `GET /settings/organization` + `GET /billing/subscription` | No single combined endpoint — compose two calls. |
+| Workspace info card | 🟢 `GET /settings/organization` + `GET /billing/subscription` + `GET /team/members` | Composed client-side. `OrganizationOut.created_at` was added for the "Created" field. |
 | Members list | 🟢 `GET /team/members` | Returns `{id, user_id, name, email, avatar_url, role, status, joined_at, last_active}` — near-exact match. |
 | Invite Member dialog | 🟢 `POST /team/invite` | Body: `{email, role}`. Owner/Admin only. Sends a real invitation email. |
-| Roles & Permissions matrix | — | 🔴 Static reference table in the frontend — no live permissions-list endpoint (permissions ARE modeled in the DB via `permissions`/`role_permissions`, just not exposed via a route). |
-| Shared Leads / Shared Searches | — | 🔴 No "sharing" concept exists server-side — frontend-only mock for now. |
+| Roles & Permissions matrix | 🟢 `GET /team/roles` + `GET /team/permissions` | Added so the table reflects the matrix `require_permission` actually enforces, rather than a client-side copy of the seed data. `superadmin` is excluded — it is a platform flag, not an assignable workspace role. |
+| Recent Leads / Recent Searches | 🟢 `GET /leads?page_size=3`, `GET /search/history?page_size=3` | Renamed from "Shared": there is no per-resource owner server-side, so the old "Shared by <person>" line was fabricated. Rows now show real provenance (source provider; location + result count). |
 | Pending Invitations list | 🟢 `GET /team/invitations` | |
 | Resend / Cancel invite | 🟢 `POST /team/invitations/{id}/resend`, `DELETE /team/invitations/{id}` | |
 
@@ -234,6 +273,7 @@ only; there's no `/exports` router. To wire this page up:
 |---|---|---|
 | Manage Payment Method dialog | — | 🔴 Deliberately not implemented server-side (no real card collection, per platform safety rules) — real flow is Stripe Checkout (`POST /billing/checkout`) which redirects to a Stripe-hosted page instead of an in-app card form. **The frontend's current in-app "masked card" dialog UI doesn't match this flow and should be replaced** with a redirect-to-Stripe-Checkout button. |
 | Current Plan card | 🟢 `GET /billing/plans`, `GET /billing/subscription` | |
+| Credits & Add-ons | 🟢 `GET /billing/credit-packs`, `POST /billing/credits/checkout` | The pack catalogue is served by the backend so price/credit amounts have one definition; the client sends only `pack_id`. |
 | Upgrade/Downgrade | 🟢 `POST /billing/checkout` body `{plan_id}` → returns a real Stripe Checkout URL to redirect to (needs `STRIPE_SECRET_KEY` configured) | |
 | Usage row (credits/seats/searches/exports) | 🟢 `GET /billing/usage` | Field names match closely. |
 | Credits & Add-ons | 🟢 `POST /billing/credits/checkout` body `{amount_cents}` | Same Stripe Checkout redirect pattern. |
@@ -259,10 +299,22 @@ hero's animated "live results" mock is intentionally decorative.
 
 ## 17. Fields with no backend equivalent yet
 
-Gaps found while writing this mapping — worth scoping as follow-up work:
+Gaps found while writing this mapping — worth scoping as follow-up work.
 
-- **Export Center has no backend module at all** (§10) — the only page in
-  this state; everything else has at least partial real API support.
+Two entries have since been closed and are kept here, struck through, so the
+list stays readable as a record rather than quietly changing shape:
+
+- ~~**Export Center has no backend module at all** (§10)~~ — **done.** The
+  `/exports` router now covers creation, history, both download paths and
+  deletion, for leads, search results, and dashboard/analytics reports.
+- ~~**Search results generation doesn't set `Company.lat/lng`**~~ — **done.**
+  The Google Places and Mappls providers both populate coordinates, so Map
+  Search shows pins for freshly-searched leads without a separate geocoding
+  pass. Leads from providers that return no coordinates (Bing, Company Website
+  Search) and CSV imports without lat/lng columns still need `POST /map/geocode`.
+
+Still open:
+
 - **API Manager's connect/disconnect + credential management** aren't
   exposed via any route (`ApiProvider.connected`/`api_key_encrypted`
   columns exist but are unreachable from the API surface).
@@ -274,9 +326,6 @@ Gaps found while writing this mapping — worth scoping as follow-up work:
   implemented.
 - **No "saved views" or "shared leads/searches" concept** — both are
   purely decorative in the current frontend and have no backing table.
-- **Search results generation doesn't set `Company.lat/lng`** — blocks
-  the Map Search page from showing pins for freshly-searched leads until
-  those companies are geocoded separately.
 
 ## Suggested integration approach
 

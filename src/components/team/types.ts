@@ -18,10 +18,16 @@ export interface PendingInvite {
   sentAt: string;
 }
 
-export interface SharedItem {
+/**
+ * A workspace-wide resource summarised in the Team sidebar.
+ *
+ * Replaces the previous `SharedItem`, which carried a `sharedBy` person the
+ * API does not expose — `meta` holds whatever provenance the resource actually
+ * has (source provider, location, result count).
+ */
+export interface WorkspaceItem {
   id: string;
   name: string;
-  sharedBy: string;
-  sharedByInitials: string;
-  sharedAt: string;
+  meta: string;
+  initials: string;
 }

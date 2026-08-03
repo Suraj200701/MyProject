@@ -48,6 +48,10 @@ class SearchStatus(str, enum.Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    # A provider that never ran — no credentials, or not applicable to the
+    # query. Distinct from FAILED: nothing went wrong, so surfacing it as a
+    # failure made every search look like six broken integrations.
+    SKIPPED = "skipped"
 
 
 class ExportFormat(str, enum.Enum):
@@ -62,6 +66,19 @@ class ExportStatus(str, enum.Enum):
     READY = "ready"
     EXPIRED = "expired"
     FAILED = "failed"
+
+
+class ExportResource(str, enum.Enum):
+    """What an export contains.
+
+    Stored on the row because the history list and the download endpoint both
+    need to know what a file holds without re-deriving it from the filename.
+    """
+
+    LEADS = "leads"
+    SEARCH_RESULTS = "search_results"
+    DASHBOARD_REPORT = "dashboard_report"
+    ANALYTICS_REPORT = "analytics_report"
 
 
 class BillingInterval(str, enum.Enum):

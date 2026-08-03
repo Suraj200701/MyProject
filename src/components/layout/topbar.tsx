@@ -4,6 +4,7 @@ import { Search, Zap, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,13 +14,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { NotificationPanel } from "@/components/layout/notification-panel";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { useUiStore } from "@/store/ui-store";
-import { dashboardStats } from "@/lib/mock-data";
+import { useDashboardStats } from "@/lib/api/queries";
+import { useAuth } from "@/lib/auth/auth-context";
 import Link from "next/link";
 
 export function Topbar({ onMobileMenu }: { onMobileMenu?: () => void }) {
   const { setCommandOpen } = useUiStore();
-  const creditsPct = Math.round((dashboardStats.creditsRemaining / dashboardStats.creditsTotal) * 100);
+  const { data: stats } = useDashboardStats();
+  const { displayName, initials, user, logout } = useAuth();
+
+  // Guard the divide: a plan with 0 credits included would otherwise render NaN%.
+  const creditsPct =
+    stats && stats.creditsTotal > 0
+      ? Math.round((stats.creditsRemaining / stats.creditsTotal) * 100)
+      : 0;
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/70 backdrop-blur-xl px-4 md:px-6">
@@ -39,10 +49,18 @@ export function Topbar({ onMobileMenu }: { onMobileMenu?: () => void }) {
       </button>
 
       <div className="ml-auto flex items-center gap-2">
-        <Badge variant="primary" className="hidden sm:inline-flex">
-          <Zap className="size-3" />
-          {dashboardStats.creditsRemaining.toLocaleString()} credits · {creditsPct}%
-        </Badge>
+        {/* Hidden until the real balance arrives — a placeholder number here
+            would be a credit figure the user might act on. */}
+        {stats ? (
+          <Badge variant="primary" className="hidden sm:inline-flex">
+            <Zap className="size-3" />
+            {stats.creditsRemaining.toLocaleString()} credits · {creditsPct}%
+          </Badge>
+        ) : (
+          <Skeleton className="hidden h-6 w-32 rounded-full sm:block" />
+        )}
+
+        <ThemeToggle />
 
         <NotificationPanel />
 
@@ -51,15 +69,15 @@ export function Topbar({ onMobileMenu }: { onMobileMenu?: () => void }) {
             <button className="rounded-full ring-offset-background transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <Avatar className="size-8 border border-border">
                 <AvatarFallback className="bg-[linear-gradient(135deg,var(--color-primary),var(--color-accent))] text-white">
-                  SG
+                  {initials}
                 </AvatarFallback>
               </Avatar>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
-              <p className="font-medium">Suraj Gour</p>
-              <p className="text-xs font-normal text-muted-foreground">suraj@leadmaster.ai</p>
+              <p className="font-medium">{displayName || "—"}</p>
+              <p className="text-xs font-normal text-muted-foreground">{user?.email ?? ""}</p>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
@@ -72,9 +90,10 @@ export function Topbar({ onMobileMenu }: { onMobileMenu?: () => void }) {
               <Link href="/dashboard/team">Team</Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/login">Sign out</Link>
-            </DropdownMenuItem>
+            {/* A real sign-out: revokes the refresh token server-side, clears
+                stored tokens, and drops the query cache so the next account
+                can't briefly see this one's data. */}
+            <DropdownMenuItem onSelect={() => void logout()}>Sign out</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
