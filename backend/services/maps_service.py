@@ -9,6 +9,11 @@ Three backends are supported, tried in order:
      global, and returns real coordinates for both forward and reverse geocoding.
   3. **Mappls (MapmyIndia)** — used when `MAPPLS_CLIENT_ID`/`MAPPLS_CLIENT_SECRET`
      are set. India-only, and see the entitlement note below.
+  4. **OpenStreetMap / Nominatim** — always available: it needs no API key, only
+     an identifying User-Agent. This is why geocoding now works on a completely
+     unconfigured deployment. It is last because it is donated infrastructure
+     rate-limited to 1 request/second, so a paid provider is preferred when one
+     is configured.
 
 Geoapify sits ahead of Mappls deliberately: Mappls forward geocoding needs an
 entitlement many projects do not have, whereas Geoapify answers with coordinates
@@ -42,6 +47,7 @@ import httpx
 from config.settings import settings
 from services.providers.http import PermanentProviderError, TransientProviderError
 from services.providers.geoapify import GeoapifyClient
+from services.providers.openstreetmap import NominatimClient
 from services.providers.mappls import MapplsClient
 from utils.exceptions import BadRequestError
 
@@ -54,8 +60,9 @@ DISTANCE_MATRIX_URL = "https://maps.googleapis.com/maps/api/distancematrix/json"
 EARTH_RADIUS_KM = 6371.0088
 
 _NO_PROVIDER = (
-    "No geocoding provider is configured — set GEOAPIFY_API_KEY, "
-    "GOOGLE_MAPS_API_KEY, or MAPPLS_CLIENT_ID and MAPPLS_CLIENT_SECRET, in .env"
+    "No geocoding provider is available — set OSM_USER_AGENT (OpenStreetMap needs "
+    "no key), GEOAPIFY_API_KEY, GOOGLE_MAPS_API_KEY, or MAPPLS_CLIENT_ID and "
+    "MAPPLS_CLIENT_SECRET, in .env"
 )
 
 
@@ -73,8 +80,19 @@ def _mappls() -> MapplsClient | None:
     return client if client.is_configured else None
 
 
+def _nominatim() -> NominatimClient | None:
+    """Always available unless the User-Agent has been blanked out."""
+    client = NominatimClient()
+    return client if client.is_configured else None
+
+
 def _require_any_provider() -> None:
-    if not _google_configured() and _geoapify() is None and _mappls() is None:
+    if (
+        not _google_configured()
+        and _geoapify() is None
+        and _mappls() is None
+        and _nominatim() is None
+    ):
         raise BadRequestError(_NO_PROVIDER)
 
 
@@ -149,8 +167,12 @@ async def geocode_address(address: str) -> dict | None:
         return await _attempt("Geoapify geocoding", geoapify.geocode(address))
 
     mappls = _mappls()
-    assert mappls is not None  # guaranteed by _require_any_provider
-    return await _attempt("Mappls geocoding", mappls.geocode(address))
+    if mappls is not None:
+        return await _attempt("Mappls geocoding", mappls.geocode(address))
+
+    osm = _nominatim()
+    assert osm is not None  # guaranteed by _require_any_provider
+    return await _attempt("OpenStreetMap geocoding", osm.geocode(address))
 
 
 async def reverse_geocode(lat: float, lng: float) -> dict | None:
@@ -182,8 +204,12 @@ async def reverse_geocode(lat: float, lng: float) -> dict | None:
         return await _attempt("Geoapify reverse geocoding", geoapify.reverse_geocode(lat, lng))
 
     mappls = _mappls()
-    assert mappls is not None
-    return await _attempt("Mappls reverse geocoding", mappls.reverse_geocode(lat, lng))
+    if mappls is not None:
+        return await _attempt("Mappls reverse geocoding", mappls.reverse_geocode(lat, lng))
+
+    osm = _nominatim()
+    assert osm is not None
+    return await _attempt("OpenStreetMap reverse geocoding", osm.reverse_geocode(lat, lng))
 
 
 async def nearby_search(lat: float, lng: float, radius_meters: int, keyword: str | None = None) -> list[dict]:

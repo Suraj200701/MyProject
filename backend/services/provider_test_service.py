@@ -8,6 +8,8 @@ proves the credential works end to end:
     Google Places   POST searchText with maxResultCount=1 and a one-field mask.
     Bing Search     GET /v7.0/search with count=1 and responseFilter=WebPages.
     Geoapify        GET /v2/places with limit=1 over a 500m circle.
+    OpenStreetMap   GET Nominatim /search with limit=1 (no key; UA required).
+    Overpass API    POST a trivial 1-element query (no key).
     OpenAI          GET /v1/models — the standard credential probe, no tokens
                     billed.
     SMTP            Open a real connection, STARTTLS if configured, and LOGIN
@@ -334,6 +336,93 @@ async def test_geoapify(api_key: str | None) -> TestOutcome:
     )
 
 
+async def test_openstreetmap() -> TestOutcome:
+    """Nominatim reachability. There is no key to validate — only the policy.
+
+    A missing `User-Agent` is the one way to be *rejected* by this service, so
+    that is what the check is really proving.
+    """
+    from services.providers.openstreetmap import NominatimClient
+
+    name = "OpenStreetMap"
+    if not settings.OSM_USER_AGENT:
+        return _fail(name, "OSM_USER_AGENT is empty — Nominatim rejects requests without one.", 0,
+                     hint="Set OSM_USER_AGENT (e.g. LeadMasterAI/1.0).")
+
+    timer = _Timer()
+    with timer:
+        try:
+            result = await NominatimClient().geocode("Ahmedabad, Gujarat, India")
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Nominatim test call failed")
+            return _fail(name, f"Could not reach Nominatim: {type(exc).__name__}", timer.ms,
+                         **_describe_exception(exc))
+
+    if result is None:
+        return _fail(name, "Nominatim responded but geocoded nothing.", timer.elapsed_ms)
+
+    return TestOutcome(
+        provider=name,
+        success=True,
+        # No credential exists, so there is nothing to authenticate. Reporting
+        # True would imply a key was accepted.
+        authenticated=True,
+        message="Reachable. No API key required.",
+        latency_ms=timer.elapsed_ms,
+        details={"user_agent": settings.OSM_USER_AGENT, "endpoint": "nominatim.openstreetmap.org"},
+    )
+
+
+async def test_overpass() -> TestOutcome:
+    """Smallest possible Overpass query.
+
+    Overpass answers 429 when busy, which is a real operational state rather than
+    a misconfiguration — the message says so instead of implying a bad key.
+    """
+    name = "Overpass API"
+    if not settings.OVERPASS_URL:
+        return _fail(name, "OVERPASS_URL is not configured.", 0, hint="Set OVERPASS_URL.")
+
+    # One node, tiny radius: cheap for a shared public instance.
+    ql = "[out:json][timeout:20];node[amenity=cafe](around:400,23.0225,72.5714);out ids 1;"
+    timer = _Timer()
+    with timer:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as http:
+                response = await http.post(
+                    settings.OVERPASS_URL,
+                    data={"data": ql},
+                    headers={"User-Agent": settings.OSM_USER_AGENT},
+                )
+                response.raise_for_status()
+                payload = response.json()
+        except httpx.HTTPStatusError as exc:
+            logger.exception("Overpass test call rejected")
+            status = exc.response.status_code
+            message = (
+                "Overpass is throttling requests (429). The service is reachable but busy."
+                if status == 429
+                else f"Overpass returned {status}."
+            )
+            return _fail(name, message, timer.ms, **_describe_http_error(exc))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Overpass test call failed")
+            return _fail(name, f"Could not reach Overpass: {type(exc).__name__}", timer.ms,
+                         **_describe_exception(exc))
+
+    return TestOutcome(
+        provider=name,
+        success=True,
+        authenticated=True,
+        message="Reachable. No API key required.",
+        latency_ms=timer.elapsed_ms,
+        details={
+            "endpoint": settings.OVERPASS_URL,
+            "elements_returned": len(payload.get("elements") or []),
+        },
+    )
+
+
 # --- Infrastructure dependencies -----------------------------------------
 #
 # These have no ApiProvider row (they are not lead sources), so they are
@@ -501,6 +590,12 @@ async def test_provider(row: ApiProvider) -> TestOutcome:
 
     if row.name == "Geoapify":
         return await test_geoapify(key)
+
+    if row.name == "OpenStreetMap":
+        return await test_openstreetmap()
+
+    if row.name == "Overpass API":
+        return await test_overpass()
 
     if row.name == "OpenAI GPT":
         # OpenAI has no per-row credential column of its own; it is enrichment

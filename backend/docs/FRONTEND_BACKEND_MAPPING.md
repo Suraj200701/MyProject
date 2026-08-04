@@ -394,3 +394,28 @@ worked.
 **Data quality.** Coordinates and addresses are near-universal; `website` and
 `phone` come from OpenStreetMap tagging and were present on roughly 1 in 5
 sampled results, which is why the website-enrichment path still matters.
+
+## OpenStreetMap + Overpass (provider add-on)
+
+Two native providers requiring **no API key**. Full detail in `docs/PROVIDERS.md`.
+
+| Capability | Endpoint used | Notes |
+| --- | --- | --- |
+| Lead search (OSM) | `GET nominatim.openstreetmap.org/search` | Free-text place search with `extratags`/`addressdetails`. Rate-limited to 1 req/s process-wide and cached, per Nominatim's usage policy. |
+| Lead search (Overpass) | `POST {OVERPASS_URL}` | Geocodes the location, then one unioned Overpass QL query with `(around:radius,lat,lon)`. Radius 1-100km. |
+| `POST /map/geocode`, `GET /map/reverse-geocode` | Nominatim | OSM is the last link in the chain (Google -> Geoapify -> Mappls -> OSM), which is why geocoding now works with **zero configuration**. |
+| API Manager -> Credentials tab | — | Both report `source: "none_required"`, so the tab shows a **"No API Key Required"** badge instead of a credential form. No fields, nothing to submit. |
+| API Manager -> Testing tab | `POST /providers/{id}/test` | Proves reachability (and that the Nominatim User-Agent is set). A 429 from Overpass is reported as "reachable but busy", not as a bad credential. |
+| Search result merging | existing pipeline | Unchanged. `resolve_lead_providers` returns every configured provider and `_query_providers` gathers them concurrently, so OSM and Overpass merge with Google/Mappls/Geoapify/Bing automatically and go through the same dedupe -> AI scoring -> save path. |
+| Export | existing engine | Unchanged. OSM-sourced leads are ordinary `Lead` rows, so CSV/Excel/PDF/JSON exports already cover them. |
+
+**Config added (only these two, as specified):**
+
+```
+OSM_USER_AGENT=LeadMasterAI/1.0
+OVERPASS_URL=https://overpass-api.de/api/interpreter
+```
+
+**No database schema change.** Fields OSM provides that have no column (socials,
+opening hours, operator, brand, wheelchair, payment methods, OSM element id) are
+preserved in `NormalizedLead.raw` rather than added as columns.

@@ -130,6 +130,10 @@ class SearchQuery:
     industry: str | None = None
     country: str | None = None
     max_results: int = 5
+    # Search radius around the geocoded location, in kilometres. Only providers
+    # that take a spatial filter read it (Overpass); the rest ignore it, which is
+    # why it is optional rather than a required part of the contract.
+    radius_km: float | None = None
 
     @property
     def full_text(self) -> str:

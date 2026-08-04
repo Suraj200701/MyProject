@@ -83,6 +83,10 @@ PROVIDERS = [
     # map plotting possible — Google needs a key this deployment lacks and the
     # Mappls project is not licensed for coordinate delivery.
     ("Geoapify", ProviderCategory.MAPS, "🧭", "OpenStreetMap places, geocoding & autocomplete", 3000, 1),
+    # Public community services — no API key, no quota we pay for. Usage limits
+    # are generous but real, so these are metered at 1 credit like the rest.
+    ("OpenStreetMap", ProviderCategory.MAPS, "🗺️", "Nominatim geocoding & place search (no API key)", 100000, 1),
+    ("Overpass API", ProviderCategory.SEARCH, "⛰️", "OSM POI search by tag, keyword & radius (no API key)", 100000, 1),
     # No paid dependency — crawls the company's own site, so it costs 1 credit
     # for the bandwidth/compute rather than for third-party API usage.
     ("Company Website Search", ProviderCategory.SEARCH, "🌐", "Crawls a company website for contact details", 100000, 1),

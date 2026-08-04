@@ -24,6 +24,8 @@ from services.providers.bing_search import BingSearchProvider
 from services.providers.geoapify import GeoapifyProvider
 from services.providers.google_places import GooglePlacesProvider
 from services.providers.mappls import MapplsProvider
+from services.providers.openstreetmap import OpenStreetMapProvider
+from services.providers.overpass import OverpassProvider
 from services.providers.website_search import WebsiteSearchProvider
 from utils import crypto
 
@@ -78,6 +80,10 @@ _ADAPTER_FACTORIES: dict[str, callable] = {
     "Mappls (MapmyIndia)": lambda key, secret: MapplsProvider(client_id=key, client_secret=secret),
     "Bing Search": lambda key, secret: BingSearchProvider(api_key=key),
     "Geoapify": lambda key, secret: GeoapifyProvider(api_key=key),
+    # Public OSM services: no credential exists to pass, which is why they are
+    # absent from PROVIDER_CREDENTIAL_SPECS above.
+    "OpenStreetMap": lambda key, secret: OpenStreetMapProvider(),
+    "Overpass API": lambda key, secret: OverpassProvider(),
     # Crawls sites found from the query itself — no third-party credential.
     "Company Website Search": lambda key, secret: WebsiteSearchProvider(),
 }

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "116b2a0b-1233-4bcf-88c4-7691275c56fa",
+    "_postman_id": "a82a3fc1-a7aa-4080-a3d5-3d5f92d3fa3f",
     "name": "LeadMaster AI API",
     "description": "Auto-generated from the live OpenAPI schema. Run 'Auth > Login' first \u2014 it saves {{access_token}}/{{refresh_token}} automatically via a test script.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"

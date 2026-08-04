@@ -79,11 +79,19 @@ export function CredentialsForm({ providerId }: { providerId: string }) {
   }
 
   if (!status || status.source === "none_required" || !status.key) {
+    // Providers with no entry in the backend's PROVIDER_CREDENTIAL_SPECS report
+    // `none_required`. The public OpenStreetMap services land here: there is no
+    // key to issue, so a credential form would be a dead end. Say so rather than
+    // rendering empty inputs.
     return (
-      <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-        <Info className="mt-0.5 size-3 shrink-0" />
-        This provider doesn&apos;t take credentials — it works out of the box.
-      </p>
+      <div className="space-y-2">
+        <Badge variant="success">No API Key Required</Badge>
+        <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+          <Info className="mt-0.5 size-3 shrink-0" />
+          This provider works out of the box — it uses a public endpoint with no
+          credentials, so there is nothing to enter here.
+        </p>
+      </div>
     );
   }
 

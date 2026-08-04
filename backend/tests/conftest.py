@@ -52,6 +52,13 @@ os.environ["MAPPLS_CLIENT_ID"] = ""
 os.environ["MAPPLS_CLIENT_SECRET"] = ""
 os.environ["BING_SEARCH_API_KEY"] = ""
 os.environ["GEOAPIFY_API_KEY"] = ""
+# OpenStreetMap and Overpass need no API key, so blanking a key cannot disable
+# them — their `is_configured` reads these instead. Without this every search
+# test would fire real requests at donated community infrastructure, which is
+# precisely what their usage policies forbid. Tests that exercise them set the
+# values themselves and intercept the HTTP.
+os.environ["OSM_USER_AGENT"] = ""
+os.environ["OVERPASS_URL"] = ""
 os.environ["SEARCH_MAX_RESULTS_PER_PROVIDER"] = "5"
 
 from config.settings import get_settings  # noqa: E402

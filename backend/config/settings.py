@@ -153,6 +153,13 @@ class Settings(BaseSettings):
                 return origin[: -len(suffix)]
         return origin
 
+    # --- OpenStreetMap / Overpass (no API key; public community services) ---
+    # Nominatim's usage policy REQUIRES an identifying User-Agent and rejects
+    # requests without one. It also caps callers at 1 request/second, which
+    # `openstreetmap.py` enforces process-wide rather than trusting call sites.
+    OSM_USER_AGENT: str = "LeadMasterAI/1.0"
+    OVERPASS_URL: str = "https://overpass-api.de/api/interpreter"
+
     # --- AI lead scoring / summaries ---
     # When unset, scoring falls back to a deterministic signal-based scorer
     # (see services/enrichment/scoring.py) — that fallback is a real heuristic
