@@ -40,6 +40,25 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
+    # --- API documentation ---
+    # `/docs`, `/redoc` and `/openapi.json` describe every endpoint, parameter and
+    # schema in the system. That is exactly what you want while developing and
+    # exactly what you do not want to publish on a host anyone can reach: it hands
+    # an attacker a complete map of the API for free. Endpoints still require
+    # authentication either way — this is about not advertising the surface.
+    #
+    # `None` means "decide from the environment": on everywhere except production.
+    # Set it explicitly to force either behaviour (e.g. a staging box that should
+    # keep the docs, or a production deployment that deliberately publishes them).
+    ENABLE_API_DOCS: bool | None = None
+
+    @computed_field
+    @property
+    def api_docs_enabled(self) -> bool:
+        if self.ENABLE_API_DOCS is not None:
+            return self.ENABLE_API_DOCS
+        return not self.is_production
+
     # --- Database ---
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432

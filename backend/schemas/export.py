@@ -68,6 +68,13 @@ class ExportCreate(BaseModel):
     search_id: uuid.UUID | None = Field(
         default=None, description="Required when resource='search_results'."
     )
+    scan_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "Optional for resource='website_scans': supply it to export one scan "
+            "report, omit it to export the whole scan history."
+        ),
+    )
     columns: list[str] = Field(
         default_factory=list,
         description=(
@@ -110,6 +117,12 @@ class ExportCreate(BaseModel):
                     "lead_ids": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"],
                 },
                 {"resource": "search_results", "format": "csv", "search_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
+                {"resource": "website_scans", "format": "csv"},
+                {
+                    "resource": "website_scans",
+                    "format": "pdf",
+                    "scan_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                },
                 {"resource": "dashboard_report", "format": "pdf"},
                 {"resource": "analytics_report", "format": "excel"},
             ]

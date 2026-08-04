@@ -3,7 +3,7 @@
 import asyncio
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from fastapi.concurrency import run_in_threadpool
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -16,6 +16,7 @@ from models.organization import Organization
 from models.search import ApiProvider, Search, WebsiteScan
 from models.user import User
 from redis_cache.client import get_redis
+from schemas.lead import LeadOut
 from schemas.search import (
     ApiProviderOut,
     ProviderCredentialStatusOut,
@@ -247,6 +248,41 @@ async def scan_website(
         db, organization.id, user.id, payload, metering_exempt=exempt
     )
     return scan
+
+
+@router.post("/scans/{scan_id}/save-lead", response_model=LeadOut, status_code=201)
+async def save_scan_as_lead(
+    scan_id: uuid.UUID,
+    response: Response,
+    organization: Organization = Depends(get_current_organization),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Saves a website scan's findings as a lead.
+
+    Idempotent: a scan already saved returns its existing lead with 200 rather
+    than creating a second one. The scan's contacts go through the same
+    deduplicate -> score -> persist path as any provider result, so a company
+    already in the database is linked to instead of duplicated.
+    """
+    scan = (
+        await db.execute(
+            select(WebsiteScan).where(
+                WebsiteScan.id == scan_id,
+                # Scoped to the org: another workspace's scan must 404, not leak.
+                WebsiteScan.organization_id == organization.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if scan is None:
+        raise NotFoundError("Scan not found")
+
+    lead, created = await search_service.save_scan_as_lead(db, organization.id, user.id, scan)
+    if not created:
+        # Nothing new was created, so 201 would be a lie.
+        response.status_code = 200
+    await db.refresh(lead, attribute_names=["company"])
+    return LeadOut.from_lead(lead)
 
 
 @router.get("/scans", response_model=Page[WebsiteScanOut])

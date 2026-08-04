@@ -69,7 +69,9 @@ def generate_export_task(self, export_id: str) -> dict:
             if organization is None:
                 raise RuntimeError("Organization no longer exists")
 
-            columns = export_datasets.resolve_columns(export_datasets.LEAD_COLUMNS, request.columns)
+            columns = export_datasets.resolve_columns(
+                export_datasets.columns_for(request.resource), request.columns
+            )
             max_rows = settings.EXPORT_MAX_ROWS
 
             if request.resource is ExportResource.SEARCH_RESULTS:
@@ -83,6 +85,15 @@ def generate_export_task(self, export_id: str) -> dict:
                     search=search,
                     columns=columns,
                     max_rows=max_rows,
+                )
+            elif request.resource is ExportResource.WEBSITE_SCANS:
+                dataset = export_datasets.load_scans_dataset_sync(
+                    db,
+                    organization_id=organization.id,
+                    organization_name=organization.name,
+                    columns=columns,
+                    max_rows=max_rows,
+                    scan_id=request.scan_id,
                 )
             elif request.resource is ExportResource.LEADS:
                 dataset = export_datasets.load_leads_dataset_sync(

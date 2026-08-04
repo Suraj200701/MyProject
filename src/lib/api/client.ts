@@ -23,13 +23,34 @@ import {
 } from "@/lib/api/tokens";
 
 /**
+ * Inlined into the client bundle at BUILD time, so its value is fixed when the
+ * image is built and cannot be changed by the running container.
+ *
+ * Read into a named constant because unset and set-to-empty mean different
+ * things here — see `API_ORIGIN`.
+ */
+const CONFIGURED_ORIGIN = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+/**
  * Backend ORIGIN, with any accidental `/api/v1` suffix and trailing slash
  * stripped. The versioned prefix is added by `API_PREFIX` below — a base that
  * already contained it would produce `/api/v1/api/v1/...` and 404 on every
  * request. (That exact mistake shipped in the generated Postman collection, so
  * it is defended against here rather than left to configuration discipline.)
+ *
+ * An *explicitly empty* value means same-origin: requests go to `/api/v1/...`
+ * relative to whatever host served the page. That is what production uses — the
+ * reverse proxy serves the app and the API on one origin, so the build needs no
+ * CORS and no rebuild per domain, and one image deploys to any hostname.
+ *
+ * Hence the explicit `undefined` check rather than `||`: unset (local dev with
+ * no `.env.local`) and set-to-empty (production, same origin) are different
+ * intentions, and `||` collapsed the second into the first — which would have
+ * pointed every deployed browser at port 8000 on its own machine.
  */
-export const API_ORIGIN = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000")
+export const API_ORIGIN = (
+  CONFIGURED_ORIGIN === undefined ? "http://localhost:8000" : CONFIGURED_ORIGIN
+)
   .replace(/\/+$/, "")
   .replace(/\/api\/v1$/, "");
 

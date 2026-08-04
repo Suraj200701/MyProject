@@ -58,9 +58,20 @@ from services.providers.base import (
 from services.providers.registry import resolve_lead_providers
 from services.providers.website_search import build_website_profile
 from services.safe_http import FetchError
+from utils.exceptions import BadRequestError
 from utils.url_guard import resolve_and_validate
 
 logger = logging.getLogger("leadmaster.search")
+
+# Set on the `NormalizedLead` a saved scan produces, where dedup and scoring can
+# see which pipeline the lead came from.
+#
+# It is not a persisted column: `Lead` has no `source`, and `provider_id` points
+# at `api_providers` — the scanner has no row there, and inventing one would put a
+# non-provider card in the API Manager grid. Durable provenance for a scan-sourced
+# lead is the `Website Scan` tag plus `WebsiteScan.lead_id`, both of which survive
+# into exports.
+SCANNER_SOURCE = "Website Scanner"
 
 # Provider-run status mapping. SKIPPED is its own state: a provider without
 # credentials never ran, and reporting that as FAILED made every search look
@@ -281,12 +292,20 @@ async def _get_or_create_company(db: AsyncSession, lead: NormalizedLead) -> Comp
             return existing
 
     if domain:
-        existing = (
-            await db.execute(select(Company).where(Company.website.ilike(f"%{domain}%")).limit(1))
-        ).scalar_one_or_none()
-        if existing is not None:
-            _fill_company_gaps(existing, lead)
-            return existing
+        # The ILIKE is only a candidate *prefilter*; the match is decided by
+        # comparing registrable domains. On its own the substring match merges
+        # unrelated companies: a lead on `apple.com` matched a stored
+        # `https://notapple.com`, and `apple.com.evil.net` — a different site
+        # entirely, registrable domain `evil.net` — matched too. Comparing
+        # through `normalize_domain` is also what dedup does, so a company
+        # matched here and a lead deduplicated there agree.
+        candidates = (
+            await db.execute(select(Company).where(Company.website.ilike(f"%{domain}%")).limit(50))
+        ).scalars().all()
+        for candidate in candidates:
+            if dedup.normalize_domain(candidate.website) == domain:
+                _fill_company_gaps(candidate, lead)
+                return candidate
 
     normalized_city = dedup.normalize_city(lead.city)
     if lead.company_name and normalized_city:
@@ -339,6 +358,108 @@ def _fill_company_gaps(company: Company, lead: NormalizedLead) -> None:
     ):
         if getattr(company, company_attr, None) in (None, "") and getattr(lead, lead_attr, None) not in (None, ""):
             setattr(company, company_attr, getattr(lead, lead_attr))
+
+
+async def save_scan_as_lead(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    scan: WebsiteScan,
+) -> tuple[Lead, bool]:
+    """Turns a completed website scan into a lead.
+
+    Returns `(lead, created)` — `created=False` when this scan was already saved,
+    which makes the endpoint idempotent: clicking "Save to Lead" twice must not
+    produce two leads. `WebsiteScan.lead_id` records the link (the column existed
+    for exactly this and was never written).
+
+    The scan's findings go through the **same** dedup -> score -> persist path as
+    any provider result, so a scanned company that already exists is merged rather
+    than duplicated, and the lead gets a real AI score instead of the scan's
+    confidence number (which measures extraction quality, not lead quality).
+    """
+    if scan.lead_id is not None:
+        existing = (
+            await db.execute(select(Lead).where(Lead.id == scan.lead_id))
+        ).scalar_one_or_none()
+        if existing is not None:
+            return existing, False
+
+    if not scan.company_name and not scan.domain:
+        raise BadRequestError(
+            "This scan found no company name or domain, so there is nothing to save as a lead."
+        )
+
+    social = scan.social_links or {}
+    lead = NormalizedLead(
+        # A failed scan still has its domain; that is a better name than nothing.
+        company_name=scan.company_name or scan.domain,
+        website=scan.url,
+        gst_number=scan.gst_number if scan.gst_verified else None,
+        contact_name=scan.contact_person,
+        email=(scan.emails or [None])[0],
+        phone=(scan.phones or [None])[0],
+        tags=["Website Scan"],
+        raw={
+            "source": "Website Scanner",
+            "scan_id": str(scan.id),
+            "domain": scan.domain,
+            "confidence_score": scan.confidence_score,
+            "emails": scan.emails or None,
+            "phones": scan.phones or None,
+            "social_links": social or None,
+            "ssl_valid": scan.ssl_valid,
+            "mobile_friendly": scan.mobile_friendly,
+            "seo_score": scan.seo_score,
+        },
+        source_provider=SCANNER_SOURCE,
+    )
+
+    dedup_result = await dedup.deduplicate(db, organization_id, [lead])
+    if not dedup_result.unique:
+        # Already in the database under a different name/spelling. Link the scan to
+        # the lead it matched rather than reporting success with nothing to show.
+        # `existing_matches` pairs each dropped lead with the id it matched —
+        # exactly the case its docstring anticipates.
+        matched_id = (
+            dedup_result.existing_matches[0][1] if dedup_result.existing_matches else None
+        )
+        if matched_id is not None:
+            matched = (
+                await db.execute(select(Lead).where(Lead.id == matched_id))
+            ).scalar_one_or_none()
+            if matched is not None:
+                scan.lead_id = matched.id
+                await db.commit()
+                return matched, False
+        raise BadRequestError("This company is already in your lead database.")
+
+    unique_lead = dedup_result.unique[0]
+    scores = await scoring.score_leads([unique_lead])
+    score, summary = scores[0] if scores else (scoring.score_lead_by_signals(unique_lead), "")
+
+    company = await _get_or_create_company(db, unique_lead)
+    row = Lead(
+        organization_id=organization_id,
+        company_id=company.id,
+        contact_name=unique_lead.contact_name,
+        email=unique_lead.email,
+        phone=unique_lead.phone,
+        lead_score=score,
+        status="new",
+        tags=unique_lead.tags or None,
+        created_by_id=user_id,
+        ai_summary=summary,
+    )
+    db.add(row)
+    await db.flush()
+
+    scan.lead_id = row.id
+    await db.commit()
+    await db.refresh(row)
+
+    logger.info("Saved scan %s of %s as lead %s", scan.id, scan.domain, row.id)
+    return row, True
 
 
 # --- Website scanner -----------------------------------------------------

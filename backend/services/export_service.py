@@ -46,7 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config.settings import settings
 from models.enums import ExportFormat, ExportResource, ExportStatus
 from models.organization import Organization
-from models.search import Export, Search
+from models.search import Export, Search, WebsiteScan
 from services import export_datasets, exporters, storage
 from services.exporters.dataset import Dataset
 from utils.exceptions import BadRequestError, NotFoundError
@@ -89,6 +89,7 @@ class ExportRequest:
         lead_ids: list[uuid.UUID] | None = None,
         filters: dict | None = None,
         search_id: uuid.UUID | None = None,
+        scan_id: uuid.UUID | None = None,
         columns: list[str] | None = None,
         file_name: str | None = None,
     ) -> None:
@@ -98,6 +99,7 @@ class ExportRequest:
         self.lead_ids = lead_ids or []
         self.filters = filters or {}
         self.search_id = search_id
+        self.scan_id = scan_id
         self.columns = columns or []
         self.file_name = file_name
 
@@ -124,6 +126,7 @@ class ExportRequest:
             "lead_ids": [str(i) for i in self.lead_ids],
             "filters": _json_safe_filters(self.filters),
             "search_id": str(self.search_id) if self.search_id else None,
+            "scan_id": str(self.scan_id) if self.scan_id else None,
             "columns": list(self.columns),
             "file_name": self.file_name,
         }
@@ -137,6 +140,7 @@ class ExportRequest:
             lead_ids=[uuid.UUID(i) for i in (payload.get("lead_ids") or [])],
             filters=payload.get("filters") or {},
             search_id=uuid.UUID(payload["search_id"]) if payload.get("search_id") else None,
+            scan_id=uuid.UUID(payload["scan_id"]) if payload.get("scan_id") else None,
             columns=payload.get("columns") or [],
             file_name=payload.get("file_name"),
         )
@@ -182,6 +186,21 @@ async def validate_request(db: AsyncSession, organization_id: uuid.UUID, request
             raise NotFoundError("Search not found")
         return search
 
+    if request.resource is ExportResource.WEBSITE_SCANS and request.scan_id is not None:
+        # scan_id is optional (omit it to export every scan), but a supplied one
+        # must exist in this organization — another org's id has to 404, not leak.
+        scan = (
+            await db.execute(
+                select(WebsiteScan).where(
+                    WebsiteScan.id == request.scan_id,
+                    WebsiteScan.organization_id == organization_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if scan is None:
+            raise NotFoundError("Scan not found")
+        return None
+
     if request.scope == "selected" and not request.lead_ids:
         raise BadRequestError("lead_ids must not be empty when scope is 'selected'")
 
@@ -202,6 +221,10 @@ async def estimate_row_count(
     """
     if request.resource in (ExportResource.DASHBOARD_REPORT, ExportResource.ANALYTICS_REPORT):
         return 0
+
+    if request.resource is ExportResource.WEBSITE_SCANS:
+        stmt = export_datasets.scans_statement(organization_id, request.scan_id)
+        return (await db.execute(export_datasets.count_statement(stmt))).scalar_one()
 
     filters = dict(request.filters)
     if request.resource is ExportResource.SEARCH_RESULTS:
@@ -232,7 +255,9 @@ async def build_dataset(
     search: Search | None = None,
 ) -> Dataset:
     """Builds the `Dataset` for a request on the async (request) path."""
-    columns = export_datasets.resolve_columns(export_datasets.LEAD_COLUMNS, request.columns)
+    columns = export_datasets.resolve_columns(
+        export_datasets.columns_for(request.resource), request.columns
+    )
     max_rows = settings.EXPORT_MAX_ROWS
 
     if request.resource is ExportResource.LEADS:
@@ -257,6 +282,16 @@ async def build_dataset(
             search=search,
             columns=columns,
             max_rows=max_rows,
+        )
+
+    if request.resource is ExportResource.WEBSITE_SCANS:
+        return await export_datasets.load_scans_dataset(
+            db,
+            organization_id=organization.id,
+            organization_name=organization.name,
+            columns=columns,
+            max_rows=max_rows,
+            scan_id=request.scan_id,
         )
 
     if request.resource is ExportResource.DASHBOARD_REPORT:

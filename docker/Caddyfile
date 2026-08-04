@@ -1,0 +1,59 @@
+# Reverse proxy for the production stack, with automatic HTTPS.
+#
+# Caddy provisions and renews a Let's Encrypt certificate for $SITE_DOMAIN on its
+# own, which is why it fronts production instead of the dev `nginx.conf`: that
+# file listens on port 80 only, and serving JWTs over plain HTTP would expose
+# every session token in transit.
+#
+# Requirements for the certificate to issue:
+#   * $SITE_DOMAIN resolves (A/AAAA record) to this host
+#   * ports 80 and 443 reach this container from the public internet
+#   * $ACME_EMAIL is a real address (Let's Encrypt sends expiry warnings there)
+#
+# Set SITE_DOMAIN=:80 to run without TLS — only for a private network test. Any
+# public deployment must use a real hostname.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+
+	# The API, the OpenAPI schema, and user-uploaded files all come from the
+	# backend. Everything else is the Next.js app.
+	#
+	# Serving both on one origin is what lets the frontend image be built
+	# same-origin: no CORS preflight, and no rebuild when the domain changes.
+	@backend path /api/* /openapi.json /docs* /redoc* /uploads/*
+	handle @backend {
+		reverse_proxy backend:8000 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	# Uploads and exports are the largest bodies the API accepts.
+	request_body {
+		max_size 15MB
+	}
+
+	header {
+		# HSTS is only safe once HTTPS is confirmed working — Caddy sets it only
+		# on TLS-served sites, so a :80 test run is unaffected.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

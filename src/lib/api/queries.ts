@@ -349,6 +349,26 @@ export function useSystemChecks() {
 }
 
 /** Import history, newest first. Optionally filtered to one source. */
+/**
+ * Saves a website scan as a lead.
+ *
+ * Invalidates leads, scans and the dashboard: the scan row gains a `lead_id`, a
+ * lead appears, and every count on screen shifts. Leaving them stale reads as the
+ * save having done nothing — which is exactly the bug this replaced.
+ */
+export function useSaveScanAsLead() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (scanId: string) => searchApi.saveScanAsLead(scanId),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: queryKeys.leads });
+      client.invalidateQueries({ queryKey: queryKeys.scans });
+      client.invalidateQueries({ queryKey: queryKeys.dashboard });
+      client.invalidateQueries({ queryKey: queryKeys.analytics });
+    },
+  });
+}
+
 export function useImportHistory(query: PaginationQuery & { source?: ImportSource } = {}) {
   return useQuery({
     queryKey: [...queryKeys.imports, query],

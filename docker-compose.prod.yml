@@ -1,0 +1,101 @@
+# Production overlay. Use it *with* the base file, never alone:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# What it changes, and why each change matters for a publicly reachable host:
+#
+#   * Postgres and Redis stop publishing ports. The base file maps 5432 and 6379
+#     to the host for local tooling; on a public box that offers the database
+#     directly to the internet.
+#   * The backend stops publishing 8000 and the frontend stops publishing 3000.
+#     Only the proxy is reachable, so there is no way to bypass TLS or the rate
+#     limiter by hitting a service port.
+#   * Caddy replaces the dev nginx container, terminating TLS with a certificate
+#     it obtains itself (see docker/Caddyfile).
+#   * Credentials come from backend/.env.production rather than the dev .env.
+#   * Redis requires a password, and the backend is told to use it.
+#
+# Required variables in the shell (or a root .env) when running this:
+#   SITE_DOMAIN, ACME_EMAIL, POSTGRES_PASSWORD, REDIS_PASSWORD
+
+services:
+  postgres:
+    ports: !override []
+    environment:
+      # No default: an unset password here would silently fall back to the
+      # base file's `leadmaster`, which is a published value in this repo.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+
+  redis:
+    ports: !override []
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    ports: !override []
+    env_file:
+      - ./backend/.env.production
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+
+  celery_worker:
+    env_file:
+      - ./backend/.env.production
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+
+  celery_beat:
+    env_file:
+      - ./backend/.env.production
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+
+  frontend:
+    ports: !override []
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        # Empty on purpose: same-origin. Caddy serves the app and the API on one
+        # hostname, so the bundle uses relative /api/v1 URLs and this image works
+        # for any domain without a rebuild.
+        NEXT_PUBLIC_API_BASE_URL: ""
+        NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN:?set SITE_DOMAIN}
+    environment: !override {}
+
+  # Replaces the dev nginx container, which is HTTP-only.
+  nginx:
+    profiles: ["disabled"]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?set SITE_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and ACME account keys. Losing this volume means re-issuing
+      # on every restart, which hits Let's Encrypt rate limits.
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+
+volumes:
+  caddy_data:
+  caddy_config:

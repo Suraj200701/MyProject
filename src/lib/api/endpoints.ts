@@ -240,6 +240,13 @@ export const searchApi = {
     apiFetch<WebsiteScanOut>("/scan-website", { method: "POST", body: { url } }),
 
   scans: (query: PaginationQuery = {}) => apiFetch<Page<WebsiteScanOut>>("/scans", { query }),
+
+  /**
+   * Saves a scan's findings as a lead. Idempotent — a scan already saved returns
+   * its existing lead rather than creating a second one.
+   */
+  saveScanAsLead: (scanId: string) =>
+    apiFetch<LeadOut>(`/scans/${scanId}/save-lead`, { method: "POST" }),
 };
 
 // --- Imports ------------------------------------------------------------

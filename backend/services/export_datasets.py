@@ -33,7 +33,7 @@ from sqlalchemy.orm import joinedload
 
 from models.enums import ExportResource
 from models.lead import Company, Lead
-from models.search import ApiProvider, Search
+from models.search import ApiProvider, Search, WebsiteScan
 from services.exporters.dataset import Column, Dataset, ReportSection
 
 # --- Column catalogues ----------------------------------------------------
@@ -76,6 +76,140 @@ DEFAULT_LEAD_COLUMN_KEYS: tuple[str, ...] = (
 )
 
 
+# Website-scan columns. Every one maps to a real `WebsiteScan` field — a scan that
+# found nothing leaves them empty rather than filled with placeholders.
+SCAN_COLUMNS: tuple[Column, ...] = (
+    Column("company_name", "Company", 28),
+    Column("url", "URL", 34),
+    Column("domain", "Domain", 22),
+    Column("confidence_score", "Confidence", 12),
+    Column("emails", "Emails", 30),
+    Column("phones", "Phones", 22),
+    Column("contact_person", "Contact", 20),
+    Column("gst_number", "GSTIN", 18),
+    Column("gst_verified", "GSTIN verified", 14),
+    Column("social_links", "Social", 30),
+    Column("ssl_valid", "SSL", 8),
+    Column("mobile_friendly", "Mobile friendly", 14),
+    Column("seo_score", "SEO", 8),
+    Column("load_time_ms", "Load (ms)", 11),
+    Column("scan_duration_ms", "Scan (ms)", 11),
+    Column("saved_as_lead", "Saved as lead", 13),
+    Column("scanned_at", "Scanned", 18),
+)
+
+
+def scan_row(scan: WebsiteScan) -> dict[str, Any]:
+    """One export row from a scan. Multi-valued fields are joined for flat formats."""
+    social = scan.social_links or {}
+    return {
+        "company_name": scan.company_name,
+        "url": scan.url,
+        "domain": scan.domain,
+        "confidence_score": scan.confidence_score,
+        # Every address/number found, not just the first — the whole point of a
+        # scan export is to get at what the single lead field cannot hold.
+        "emails": ", ".join(scan.emails or []),
+        "phones": ", ".join(scan.phones or []),
+        "contact_person": scan.contact_person,
+        "gst_number": scan.gst_number,
+        "gst_verified": "yes" if scan.gst_verified else "no",
+        "social_links": ", ".join(
+            f"{k}: {v}" for k, v in (social.items() if isinstance(social, dict) else [])
+        ),
+        "ssl_valid": "yes" if scan.ssl_valid else "no",
+        "mobile_friendly": "yes" if scan.mobile_friendly else "no",
+        "seo_score": scan.seo_score,
+        "load_time_ms": scan.load_time_ms,
+        "scan_duration_ms": scan.scan_duration_ms,
+        "saved_as_lead": "yes" if scan.lead_id else "no",
+        "scanned_at": scan.created_at.strftime("%Y-%m-%d %H:%M UTC") if scan.created_at else None,
+    }
+
+
+def scans_statement(organization_id: uuid.UUID, scan_id: uuid.UUID | None = None) -> Select:
+    """Scans for this organization, newest first, or one specific scan."""
+    stmt = (
+        select(WebsiteScan)
+        .where(WebsiteScan.organization_id == organization_id)
+        .order_by(WebsiteScan.created_at.desc())
+    )
+    if scan_id is not None:
+        stmt = stmt.where(WebsiteScan.id == scan_id)
+    return stmt
+
+
+def assemble_scans_dataset(
+    *,
+    rows: list[dict],
+    columns: list[Column],
+    organization_name: str,
+    single_scan_domain: str | None = None,
+    truncated_at: int | None = None,
+) -> Dataset:
+    metadata = {
+        "Organization": organization_name,
+        "Generated": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
+        "Scans exported": f"{len(rows):,}",
+    }
+    if single_scan_domain:
+        metadata["Scan"] = single_scan_domain
+    if truncated_at is not None:
+        metadata["Truncated"] = f"Capped at {truncated_at:,} rows by the server's export limit"
+
+    return Dataset(
+        title="LeadMaster AI — Website Scans",
+        subtitle=f"Scan report for {single_scan_domain}" if single_scan_domain else "Website scan history",
+        columns=columns,
+        rows=rows,
+        metadata=metadata,
+    )
+
+
+async def load_scans_dataset(
+    db,
+    *,
+    organization_id: uuid.UUID,
+    organization_name: str,
+    columns: list[Column],
+    max_rows: int,
+    scan_id: uuid.UUID | None = None,
+) -> Dataset:
+    """Loads scans for export. `scan_id` narrows it to a single report."""
+    stmt = scans_statement(organization_id, scan_id)
+    total = (await db.execute(count_statement(stmt))).scalar_one()
+    scans = (await db.execute(stmt.limit(max_rows))).unique().scalars().all()
+    return assemble_scans_dataset(
+        rows=[scan_row(s) for s in scans],
+        columns=columns,
+        organization_name=organization_name,
+        single_scan_domain=scans[0].domain if scan_id and scans else None,
+        truncated_at=max_rows if total > max_rows else None,
+    )
+
+
+def load_scans_dataset_sync(
+    db,
+    *,
+    organization_id: uuid.UUID,
+    organization_name: str,
+    columns: list[Column],
+    max_rows: int,
+    scan_id: uuid.UUID | None = None,
+) -> Dataset:
+    """Sync twin for the Celery worker, which uses a blocking session."""
+    stmt = scans_statement(organization_id, scan_id)
+    total = db.execute(count_statement(stmt)).scalar_one()
+    scans = db.execute(stmt.limit(max_rows)).unique().scalars().all()
+    return assemble_scans_dataset(
+        rows=[scan_row(s) for s in scans],
+        columns=columns,
+        organization_name=organization_name,
+        single_scan_domain=scans[0].domain if scan_id and scans else None,
+        truncated_at=max_rows if total > max_rows else None,
+    )
+
+
 def _normalize_token(value: str) -> str:
     """Collapses a key or label to a comparable token.
 
@@ -94,6 +228,13 @@ def resolve_columns(catalogue: tuple[Column, ...], requested: list[str] | None) 
     Order follows the caller's request, so column order is controllable.
     """
     if not requested:
+        # `DEFAULT_LEAD_COLUMN_KEYS` is a curated subset of the *lead* catalogue —
+        # applying it to any other catalogue silently drops nearly everything. The
+        # scan catalogue shares exactly one key with it (`gst_number`), so a scan
+        # export came out as a single GSTIN column. For every other resource, "no
+        # columns requested" means the whole catalogue.
+        if catalogue is not LEAD_COLUMNS:
+            return list(catalogue)
         default = {k: None for k in DEFAULT_LEAD_COLUMN_KEYS}
         return [c for c in catalogue if c.key in default] or list(catalogue)
 
@@ -606,7 +747,21 @@ async def load_analytics_dataset(db, *, organization_id: uuid.UUID, organization
 # excluded because they are assembled from the async-only analytics service —
 # and they never need it: each is a few dozen aggregate rows, well under the
 # async threshold, so they are always generated inline.
-_BACKGROUND_CAPABLE = frozenset({ExportResource.LEADS, ExportResource.SEARCH_RESULTS})
+_BACKGROUND_CAPABLE = frozenset(
+    {ExportResource.LEADS, ExportResource.SEARCH_RESULTS, ExportResource.WEBSITE_SCANS}
+)
+
+
+def columns_for(resource: ExportResource) -> tuple[Column, ...]:
+    """The column catalogue for a resource.
+
+    Reports build their own sections and ignore this; they are listed so a new
+    resource cannot silently fall through to the lead columns, which is how a
+    scan export would have come out with every cell empty.
+    """
+    if resource is ExportResource.WEBSITE_SCANS:
+        return SCAN_COLUMNS
+    return LEAD_COLUMNS
 
 
 def supports_background(resource: ExportResource) -> bool:

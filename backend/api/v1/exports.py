@@ -136,6 +136,7 @@ async def create_export(
         lead_ids=payload.lead_ids,
         filters=payload.filters.model_dump(exclude_none=True) if payload.filters else {},
         search_id=payload.search_id,
+        scan_id=payload.scan_id,
         columns=payload.columns,
         file_name=payload.file_name,
     )

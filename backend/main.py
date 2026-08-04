@@ -38,6 +38,11 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    # Off in production by default — see `Settings.api_docs_enabled`. `None`
+    # disables the route entirely rather than serving an error page, so an
+    # unauthenticated probe cannot even confirm the framework from a 403.
+    docs_enabled = settings.api_docs_enabled
+
     app = FastAPI(
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
@@ -45,9 +50,9 @@ def create_app() -> FastAPI:
             "LeadMaster AI backend API. Interactive docs are available at /docs "
             "(Swagger UI) and /redoc (ReDoc)."
         ),
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
         lifespan=lifespan,
     )
 

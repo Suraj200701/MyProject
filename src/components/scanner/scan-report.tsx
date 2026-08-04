@@ -3,6 +3,7 @@
 import { formatDistanceToNowStrict } from "date-fns";
 import {
   BadgeCheck,
+  Loader2,
   Camera,
   Clock,
   Link2,
@@ -21,8 +22,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import type { ScanReport, SocialResult } from "@/components/scanner/types";
 import { cn } from "@/lib/utils";
+import { errorMessage } from "@/lib/api/client";
+import { useCreateExport, useSaveScanAsLead } from "@/lib/api/queries";
 
 const SOCIAL_ICON: Record<SocialResult["platform"], typeof Link2> = {
   LinkedIn: Link2,
@@ -38,6 +42,54 @@ function scoreTone(score: number) {
 }
 
 export function ScanReportView({ report, onReset }: { report: ScanReport; onReset: () => void }) {
+  const saveLead = useSaveScanAsLead();
+  const createExport = useCreateExport();
+  const router = useRouter();
+
+  /**
+   * Saves the scan's findings as a lead.
+   *
+   * Both this and the export below used to be `toast.success(...)` and nothing
+   * else — the buttons claimed to work and silently did nothing. The backend now
+   * runs the scan through the same dedupe -> score -> persist path as any provider
+   * result, so an already-known company is linked rather than duplicated.
+   *
+   * The endpoint distinguishes the two cases by status (201 created / 200 already
+   * linked), but `apiFetch` resolves to the parsed body only, so the wording here
+   * has to hold for both. "Saved … to your leads" is true either way, and clicking
+   * twice can't produce a duplicate.
+   */
+  function saveAsLead() {
+    saveLead.mutate(report.id, {
+      onSuccess: (lead) => {
+        toast.success(`Saved ${lead.company} to your leads`, {
+          description: `Scored ${lead.lead_score}/100.`,
+          action: { label: "Open", onClick: () => router.push(`/dashboard/leads/${lead.id}`) },
+        });
+      },
+      onError: (error) => toast.error(errorMessage(error)),
+    });
+  }
+
+  /** Generates a real export file for this one scan and downloads it. */
+  function exportReport() {
+    createExport.mutate(
+      { resource: "website_scans", format: "csv", scan_id: report.id },
+      {
+        onSuccess: (created) => {
+          toast.success("Report exported", {
+            description: `${created.file_name} is ready in the Export Center.`,
+            action: {
+              label: "Export Center",
+              onClick: () => router.push("/dashboard/export"),
+            },
+          });
+        },
+        onError: (error) => toast.error(errorMessage(error)),
+      },
+    );
+  }
+
   const tone = scoreTone(report.confidence);
 
   return (
@@ -71,12 +123,22 @@ export function ScanReportView({ report, onReset }: { report: ScanReport; onRese
             </div>
           </div>
           <div className="flex gap-2">
-            <Button size="sm" onClick={() => toast.success("Saved to lead profile")}>
-              <BadgeCheck className="size-3.5" />
-              Save to Lead
+            <Button size="sm" disabled={saveLead.isPending} onClick={saveAsLead}>
+              {saveLead.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <BadgeCheck className="size-3.5" />
+              )}
+              {saveLead.isPending ? "Saving…" : "Save to Lead"}
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => toast.success("Report exported")}>
-              Export Report
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={createExport.isPending}
+              onClick={exportReport}
+            >
+              {createExport.isPending ? <Loader2 className="size-3.5 animate-spin" /> : null}
+              {createExport.isPending ? "Exporting…" : "Export Report"}
             </Button>
             <Button variant="outline" size="sm" onClick={onReset}>
               <RotateCcw className="size-3.5" />

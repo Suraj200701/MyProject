@@ -77,6 +77,7 @@ class ExportResource(str, enum.Enum):
 
     LEADS = "leads"
     SEARCH_RESULTS = "search_results"
+    WEBSITE_SCANS = "website_scans"
     DASHBOARD_REPORT = "dashboard_report"
     ANALYTICS_REPORT = "analytics_report"
 

@@ -523,6 +523,7 @@ export type ExportStatusApi = "processing" | "ready" | "expired" | "failed";
 export type ExportResourceApi =
   | "leads"
   | "search_results"
+  | "website_scans"
   | "dashboard_report"
   | "analytics_report";
 export type ExportScopeApi = "all" | "filtered" | "selected";
@@ -545,6 +546,8 @@ export interface ExportCreateBody {
   lead_ids?: string[];
   filters?: ExportFiltersBody | null;
   search_id?: string | null;
+  /** Optional for resource="website_scans": one scan report, or omit for all. */
+  scan_id?: string | null;
   columns?: string[];
   file_name?: string | null;
 }

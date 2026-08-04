@@ -955,7 +955,15 @@ async def test_options_endpoint_describes_the_module(client, signed_up_user):
 
     assert {f["value"] for f in body["formats"]} == {"csv", "excel", "pdf", "json"}
     assert next(f for f in body["formats"] if f["value"] == "excel")["extension"] == "xlsx"
-    assert set(body["resources"]) == {"leads", "search_results", "dashboard_report", "analytics_report"}
+    # `website_scans` joined the catalogue when the scanner's Export Report
+    # button was made real; the endpoint advertising it is the point.
+    assert set(body["resources"]) == {
+        "leads",
+        "search_results",
+        "website_scans",
+        "dashboard_report",
+        "analytics_report",
+    }
     assert "lead_score" in {c["key"] for c in body["lead_columns"]}
     assert body["limits"]["max_rows"] > 0
 

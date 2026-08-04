@@ -92,9 +92,16 @@ services:
     build:
       context: .
       dockerfile: docker/frontend.Dockerfile
+      # Build args, not runtime environment: Next.js inlines NEXT_PUBLIC_* into
+      # the client bundle when it builds. This used to be set as a runtime
+      # `environment` entry named NEXT_PUBLIC_API_URL — a name the app never
+      # reads, delivered at a moment when it could no longer have any effect.
+      #
+      # Empty means same-origin (nginx proxies /api/ to the backend), so the
+      # image does not need rebuilding per hostname.
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL-}
     restart: unless-stopped
-    environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/api/v1}
     depends_on:
       - backend
     ports:
