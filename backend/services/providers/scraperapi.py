@@ -28,6 +28,8 @@ import logging
 
 import httpx
 
+from config.settings import settings
+
 logger = logging.getLogger("leadmaster.providers.scraperapi")
 
 PROVIDER_NAME = "ScraperAPI"
@@ -50,8 +52,16 @@ class ScraperApiClient:
 
     name = PROVIDER_NAME
 
-    def __init__(self, api_key: str | None) -> None:
-        self._api_key = (api_key or "").strip()
+    def __init__(self, api_key: str | None = None) -> None:
+        # Falls back to the platform value the way `MapplsClient` does.
+        # `registry.resolve_credentials` returns None when a workspace has
+        # stored no credential of its own, and applying the `.env` fallback is
+        # each client's job — without it a key present only in `.env` is
+        # silently ignored.
+        #
+        # Read at call time rather than as a default argument value, so tests
+        # that monkeypatch settings take effect.
+        self._api_key = (api_key or settings.SCRAPERAPI_KEY or "").strip()
 
     @property
     def is_configured(self) -> bool:

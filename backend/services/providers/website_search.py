@@ -71,6 +71,10 @@ class WebsiteProfile:
     http_status: int | None = None
     pages_crawled: int = 0
     error: str | None = None
+    # value -> page URL it was found on. Populated for emails, phones, the
+    # GSTIN and social links; absent for values that could not be located on a
+    # specific page, which is preferable to attributing them to a guess.
+    field_sources: dict[str, str] = field(default_factory=dict)
 
     @property
     def succeeded(self) -> bool:
@@ -110,6 +114,9 @@ async def build_website_profile(raw_url: str, max_pages: int | None = None) -> W
 
     combined_html = [html]
     combined_text = [extractors.html_to_text(html)]
+    # (url, text, html) per fetched page, kept so each extracted value can be
+    # attributed to the page it appeared on. Nothing extra is fetched for this.
+    pages: list[tuple[str, str, str]] = [(first.final_url, combined_text[0], html)]
 
     for page_url in _find_contact_pages(html, first.final_url, budget - 1):
         try:
@@ -119,8 +126,10 @@ async def build_website_profile(raw_url: str, max_pages: int | None = None) -> W
             continue
         if extra.status_code >= 400:
             continue
+        extra_text = extractors.html_to_text(extra.text)
         combined_html.append(extra.text)
-        combined_text.append(extractors.html_to_text(extra.text))
+        combined_text.append(extra_text)
+        pages.append((extra.final_url, extra_text, extra.text))
         profile.pages_crawled += 1
 
     all_html = "\n".join(combined_html)
@@ -142,7 +151,69 @@ async def build_website_profile(raw_url: str, max_pages: int | None = None) -> W
     # Prefer contact emails on the company's own domain — a gmail address found
     # on a corporate site is more often an agency's than the company's.
     profile.emails = _prefer_own_domain(profile.emails, domain)
+    profile.field_sources = _attribute_sources(profile, pages)
     return profile
+
+
+def _attribute_sources(
+    profile: WebsiteProfile, pages: list[tuple[str, str, str]]
+) -> dict[str, str]:
+    """Maps each extracted value to the page URL it was found on.
+
+    Extraction runs once over the concatenated pages (that is what lets a phone
+    number split across markup still be found), so provenance is recovered
+    afterwards by asking which page contains the value. That is a containment
+    check over already-fetched HTML — no additional requests, and no second
+    implementation of the extractors.
+
+    A value present on several pages is attributed to the first one crawled,
+    which is the homepage or the earliest contact page — the most canonical
+    place it appeared. Values that cannot be located (because extraction
+    normalised them, as phone numbers are) simply get no entry rather than a
+    guessed one.
+    """
+    sources: dict[str, str] = {}
+
+    def locate(needle: str | None) -> str | None:
+        if not needle:
+            return None
+        for url, text, html in pages:
+            if needle in text or needle in html:
+                return url
+        return None
+
+    for email in profile.emails:
+        if (url := locate(email)) is not None:
+            sources[email] = url
+    for phone in profile.phones:
+        # `extract_phones` returns E.164; the page shows it formatted. Try the
+        # normalised form first, then the digits alone, which survives most
+        # display formatting.
+        digits = "".join(ch for ch in phone if ch.isdigit())
+        url = locate(phone) or locate(digits[-10:] if len(digits) >= 10 else None)
+        if url is not None:
+            sources[phone] = url
+    if profile.gstin and (url := locate(profile.gstin)) is not None:
+        sources[profile.gstin] = url
+    # Social links carry `platform`/`handle`, not a URL, so they are keyed by
+    # platform and located via the handle's path (`company/acme`) or, failing
+    # that, the platform's own domain appearing in the markup.
+    _SOCIAL_DOMAINS = {
+        "LinkedIn": "linkedin.com",
+        "Facebook": "facebook.com",
+        "Instagram": "instagram.com",
+        "X": "twitter.com",
+    }
+    for link in profile.social_links:
+        if not isinstance(link, dict) or not link.get("found"):
+            continue
+        platform = link.get("platform")
+        handle = (link.get("handle") or "").lstrip("@")
+        url = locate(handle or None) or locate(_SOCIAL_DOMAINS.get(platform))
+        if url is not None:
+            sources[f"social:{platform}"] = url
+
+    return sources
 
 
 class WebsiteSearchProvider:

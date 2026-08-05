@@ -678,7 +678,13 @@ async def test_scraperapi(api_key: str | None) -> TestOutcome:
     operator nothing. The usage counters it returns go into `details`, which is
     genuinely useful: a key can be valid and still be out of requests.
     """
-    if not api_key:
+    # Fall back to the platform value, as every other tester does
+    # (`test_google_places` uses `api_key or settings.GOOGLE_MAPS_API_KEY`).
+    # `registry.resolve_credentials` returns None when a workspace has stored
+    # nothing of its own, so without this a key present only in `.env` was
+    # ignored and the test reported "No API key configured".
+    key = api_key or settings.SCRAPERAPI_KEY
+    if not key:
         return TestOutcome(
             success=False,
             provider="ScraperAPI",
@@ -686,7 +692,7 @@ async def test_scraperapi(api_key: str | None) -> TestOutcome:
             message="No API key configured.",
         )
 
-    client = ScraperApiClient(api_key)
+    client = ScraperApiClient(key)
     started = time.perf_counter()
     try:
         account = await client.account()
