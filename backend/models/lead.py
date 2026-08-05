@@ -56,6 +56,15 @@ class Lead(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     provider_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("api_providers.id", ondelete="SET NULL")
     )
+    # Where this lead came from, in a form that survives the provider row being
+    # deleted (`provider_id` is SET NULL) and that can also describe origins with
+    # no catalogue row at all — the website scanner, a CSV import, manual entry.
+    #
+    # Plain strings rather than a Postgres enum: every new origin would otherwise
+    # need an ALTER TYPE migration, and these are descriptive labels, not a state
+    # machine. Both are nullable, so existing rows stay valid and untouched.
+    source_type: Mapped[str | None] = mapped_column(String(16), index=True)
+    source_provider: Mapped[str | None] = mapped_column(String(64))
     search_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("searches.id", ondelete="SET NULL")
     )

@@ -155,3 +155,40 @@ class ImportStatus(str, enum.Enum):
     # from success so the user investigates their file instead of their filters.
     COMPLETED_EMPTY = "completed_empty"
     FAILED = "failed"
+
+
+class LeadSourceType(str, enum.Enum):
+    """How a lead reached the database.
+
+    Stored on `Lead.source_type` as a plain string column rather than a Postgres
+    enum — see the model for why. This class exists so the values are written in
+    one place instead of as literals scattered across services.
+    """
+
+    # Public map data (OpenStreetMap / Overpass): no credential, open licence.
+    MAP = "map"
+    # A credentialed provider — Google Places, Mappls, Geoapify, Bing.
+    API = "api"
+    # The website scanner's "Save to Lead".
+    SCANNER = "scanner"
+    # CSV upload or an extractor export.
+    IMPORT = "import"
+    # Typed in by hand.
+    MANUAL = "manual"
+
+
+class SearchMode(str, enum.Enum):
+    """Which sources a search is allowed to use.
+
+    Absent (None) is a fourth, deliberate state: it means "every configured
+    provider", which is how search behaved before modes existed. Existing API
+    clients that send no mode keep exactly that behaviour.
+    """
+
+    # Public map providers only. Costs no credentials and needs no API key.
+    MAP = "map"
+    # Credentialed providers only.
+    API = "api"
+    # API first; fall back to the map providers when the APIs are unconfigured,
+    # fail, or return nothing usable.
+    AUTO = "auto"

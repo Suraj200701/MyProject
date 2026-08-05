@@ -734,3 +734,44 @@ export interface DocumentOut {
   created_at: string;
   download_url: string;
 }
+
+// --- Lead Source / Map Mode ----------------------------------------------
+
+/** Which sources a search may use. Omitted = every configured provider. */
+export type SearchMode = "map" | "api" | "auto";
+
+/**
+ * One publicly available business as the map shows it.
+ *
+ * Every field except `id` is nullable: OpenStreetMap is volunteer-mapped and
+ * most points carry only a name and a position. Absent data stays absent.
+ */
+export interface MapResult {
+  id: string;
+  company_name: string | null;
+  category: string | null;
+  address: string | null;
+  city: string | null;
+  country: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  rating: number | null;
+  source_provider: string | null;
+  osm_url: string | null;
+}
+
+export interface MapExtractResponse {
+  results: MapResult[];
+  provider_runs: { provider_id: string | null; provider_name: string; status: string; results_found: number }[];
+  /** Set when a provider refused or timed out, as opposed to "no matches here". */
+  blocked_reason: string | null;
+}
+
+export interface MapImportResponse {
+  imported: number;
+  duplicates: number;
+  lead_ids: string[];
+}

@@ -95,6 +95,11 @@ PROVIDERS = [
     ("TradeIndia", ProviderCategory.BUSINESS, "🤝", "Trade leads and supplier network", 2000, 1),
     ("LinkedIn Sales Navigator", ProviderCategory.CRM, "💼", "Contact enrichment & company data", 1000, 3),
     ("JustDial", ProviderCategory.SEARCH, "🔍", "Local business search India", 5000, 1),
+    # --- Fetch/enrichment helpers: hold a credential, source no leads ---
+    # credit_cost 0: it never produces a lead of its own, so there is nothing to
+    # price per result. It makes other providers' fetches succeed.
+    ("ScraperAPI", ProviderCategory.SEARCH, "🛡", "Proxy fetch backend for sites that block direct requests", 10000, 0),
+
     # --- Enrichment only, never sources leads ---
     ("OpenAI GPT", ProviderCategory.AI, "✨", "AI summaries & lead scoring", 25000, 0),
 ]

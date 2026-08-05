@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from models.enums import ProviderCategory, ProviderStatus, SearchStatus
+from models.enums import ProviderCategory, ProviderStatus, SearchMode, SearchStatus
 
 
 class SearchCreate(BaseModel):
@@ -14,6 +14,10 @@ class SearchCreate(BaseModel):
     location: str | None = None
     industry: str | None = None
     country: str | None = None
+    # Which sources to use. Optional on purpose: omitting it queries every
+    # configured provider, which is exactly how search behaved before Lead Source
+    # existed, so older clients and integrations are unaffected.
+    mode: SearchMode | None = None
 
 
 class ProviderRunOut(BaseModel):
@@ -136,3 +140,60 @@ class ProviderTestResult(BaseModel):
     message: str
     latency_ms: int
     details: dict = Field(default_factory=dict)
+
+
+# --- Map Mode -------------------------------------------------------------
+
+
+class MapExtractRequest(BaseModel):
+    """Keyword + location for a public map extraction."""
+
+    query: str = Field(min_length=1, max_length=200)
+    location: str | None = Field(default=None, max_length=200)
+    # Overpass needs a spatial filter; the bounds match the adapter's clamp.
+    radius_km: float | None = Field(default=None, ge=1, le=100)
+    max_results: int | None = Field(default=None, ge=1, le=200)
+
+
+class MapResultOut(BaseModel):
+    """One publicly available business, as rendered on the map.
+
+    Every field is nullable because OSM is volunteer-mapped and most POIs carry
+    only a name and a position. Absent data stays absent — nothing here is
+    inferred or filled in.
+    """
+
+    id: str
+    company_name: str | None = None
+    category: str | None = None
+    address: str | None = None
+    city: str | None = None
+    country: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    website: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    rating: float | None = None
+    source_provider: str | None = None
+    osm_url: str | None = None
+
+
+class MapExtractResponse(BaseModel):
+    results: list[MapResultOut]
+    provider_runs: list[ProviderRunOut]
+    # Set when the run returned nothing *because a provider refused or timed
+    # out*, so the UI can offer a retry rather than claiming the area is empty.
+    blocked_reason: str | None = None
+
+
+class MapImportRequest(BaseModel):
+    """The subset of extracted results the user chose to keep."""
+
+    results: list[MapResultOut] = Field(min_length=1, max_length=500)
+
+
+class MapImportResponse(BaseModel):
+    imported: int
+    duplicates: int
+    lead_ids: list[uuid.UUID]

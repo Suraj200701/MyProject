@@ -64,6 +64,12 @@ class LeadOut(BaseModel):
     lat: float | None = None
     lng: float | None = None
     ai_summary: str | None = None
+    # Where the lead came from. `source_provider` names the specific source
+    # ("Overpass API", "Website Scanner"); `provider` above is only populated
+    # when the origin has a catalogue row, so it is null for scanner and import
+    # leads and for any provider row that was later deleted.
+    source_type: str | None = None
+    source_provider: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -92,6 +98,8 @@ class LeadOut(BaseModel):
             lat=float(company.lat) if company and company.lat is not None else None,
             lng=float(company.lng) if company and company.lng is not None else None,
             ai_summary=lead.ai_summary,
+            source_type=lead.source_type,
+            source_provider=lead.source_provider,
         )
 
 

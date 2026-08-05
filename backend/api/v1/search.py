@@ -17,8 +17,14 @@ from models.search import ApiProvider, Search, WebsiteScan
 from models.user import User
 from redis_cache.client import get_redis
 from schemas.lead import LeadOut
+from services.providers.base import NormalizedLead
 from schemas.search import (
     ApiProviderOut,
+    MapExtractRequest,
+    MapExtractResponse,
+    MapImportRequest,
+    MapImportResponse,
+    MapResultOut,
     ProviderCredentialStatusOut,
     ProviderCredentialUpdate,
     ProviderTestResult,
@@ -27,7 +33,13 @@ from schemas.search import (
     WebsiteScanCreate,
     WebsiteScanOut,
 )
-from services import provider_service, provider_test_service, search_service, usage_service
+from services import (
+    map_extraction,
+    provider_service,
+    provider_test_service,
+    search_service,
+    usage_service,
+)
 from utils.exceptions import NotFoundError
 from utils.pagination import Page, PaginationParams, paginate, pagination_params
 
@@ -298,3 +310,123 @@ async def list_scans(
     )
     scans, meta = await paginate(db, stmt, params)
     return Page(items=scans, meta=meta)
+
+
+# --- Map Mode -------------------------------------------------------------
+
+
+def _to_map_result(lead, index: int) -> MapResultOut:
+    """NormalizedLead -> wire shape, inventing nothing.
+
+    The id is positional rather than an OSM identifier: Nominatim exposes a
+    `place_id` but Overpass has no equivalent, so a stable per-response index is
+    the only identifier both can offer for the select-then-import round trip.
+    """
+    raw = lead.raw or {}
+    osm_id = raw.get("osm_id")
+    return MapResultOut(
+        id=str(osm_id or f"r{index}"),
+        company_name=lead.company_name,
+        category=raw.get("category") or lead.industry,
+        address=lead.address,
+        city=lead.city,
+        country=lead.country,
+        phone=lead.phone,
+        email=lead.email,
+        website=lead.website,
+        latitude=lead.lat,
+        longitude=lead.lng,
+        rating=lead.rating,
+        source_provider=lead.source_provider,
+        osm_url=f"https://www.openstreetmap.org/{osm_id}" if osm_id else None,
+    )
+
+
+def _to_normalized(result: MapResultOut) -> NormalizedLead:
+    """Wire shape -> NormalizedLead for the import pipeline."""
+    return NormalizedLead(
+        company_name=result.company_name or result.address or "Unnamed location",
+        industry=result.category,
+        website=result.website,
+        address=result.address,
+        city=result.city,
+        country=result.country,
+        lat=result.latitude,
+        lng=result.longitude,
+        rating=result.rating,
+        phone=result.phone,
+        email=result.email,
+        tags=["Map"],
+        source_provider=result.source_provider,
+    )
+
+
+@router.post("/map/extract", response_model=MapExtractResponse)
+async def extract_map_results(
+    payload: MapExtractRequest,
+    organization: Organization = Depends(get_current_organization),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Extracts publicly available business data from OpenStreetMap and Overpass.
+
+    Returns results for review — nothing is saved until the user picks rows and
+    calls `/map/import`. Unmetered, because both sources are free public services;
+    credits settle on import, where leads are actually created.
+    """
+    extraction = await map_extraction.extract(
+        db,
+        query=payload.query,
+        location=payload.location,
+        radius_km=payload.radius_km,
+        max_results=payload.max_results,
+    )
+
+    provider_rows = {
+        row.name: row
+        for row in (await db.execute(select(ApiProvider))).scalars().all()
+    }
+    runs = [
+        {
+            "provider_id": provider_rows[run.provider_name].id
+            if run.provider_name in provider_rows
+            else None,
+            "provider_name": run.provider_name,
+            "status": run.status.value,
+            "results_found": run.count,
+        }
+        for run in extraction.provider_runs
+    ]
+
+    return MapExtractResponse(
+        results=[_to_map_result(lead, i) for i, lead in enumerate(extraction.results)],
+        provider_runs=runs,
+        blocked_reason=extraction.blocked_reason,
+    )
+
+
+@router.post("/map/import", response_model=MapImportResponse, status_code=201)
+async def import_map_results(
+    payload: MapImportRequest,
+    organization: Organization = Depends(get_current_organization),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Imports selected map results as leads.
+
+    Runs the same deduplicate -> score -> persist pipeline as a provider search,
+    so imported rows behave identically in the lead table and in exports.
+    """
+    exempt = usage_service.is_metering_exempt(user)
+    outcome = await map_extraction.import_results(
+        db,
+        organization.id,
+        user.id,
+        [_to_normalized(r) for r in payload.results],
+        metering_exempt=exempt,
+    )
+    return MapImportResponse(
+        imported=outcome.imported,
+        duplicates=outcome.duplicates,
+        lead_ids=outcome.lead_ids,
+    )

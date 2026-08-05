@@ -221,9 +221,15 @@ async def test_test_uses_the_stored_credentials_not_the_environment(
     seen: dict[str, str] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        body = request.content.decode()
-        seen["body"] = body
-        return httpx.Response(200, json={"access_token": "t" * 36, "expires_in": 3600})
+        # Record the *token exchange* specifically. The tester also probes each
+        # Mappls capability afterwards, and those are GETs with empty bodies —
+        # recording every request would leave `seen["body"]` holding the last
+        # empty one and fail for a reason that has nothing to do with which
+        # credentials were used.
+        if "oauth/token" in str(request.url):
+            seen["body"] = request.content.decode()
+            return httpx.Response(200, json={"access_token": "t" * 36, "expires_in": 3600})
+        return httpx.Response(200, json={})
 
     _mock_transport(monkeypatch, handler)
     monkeypatch.setattr(provider_test_service.settings, "MAPPLS_CLIENT_ID", "ENV-ID", raising=False)

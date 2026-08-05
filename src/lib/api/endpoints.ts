@@ -9,12 +9,6 @@
 
 import { apiFetch, apiFetchBlob, absoluteUrl } from "@/lib/api/client";
 import type {
-  ProviderCredentialUpdateBody,
-  ProviderCredentialStatusOut,
-  ProviderTestResult,
-  PermissionOut,
-  RolePermissionsOut,
-  CreditPackOut,
   ApiKeyCreateResponse,
   ApiKeyOut,
   ApiProviderOut,
@@ -23,10 +17,8 @@ import type {
   CheckoutSessionOut,
   CityPoint,
   CountryPoint,
+  CreditPackOut,
   CsvImportResult,
-  ImportSource,
-  LeadImportOut,
-  MapsSearchUrlOut,
   DashboardStatsOut,
   DataResponse,
   DayPoint,
@@ -37,15 +29,22 @@ import type {
   ExportOut,
   ExportResourceApi,
   ExportStatusApi,
+  ExportTrendPoint,
   GeocodeResult,
+  ImportSource,
   InvitationOut,
   InvoiceOut,
   LeadCreateBody,
   LeadDetailOut,
+  LeadImportOut,
   LeadNoteOut,
   LeadOut,
   LeadQualityBand,
   LeadUpdateBody,
+  MapExtractResponse,
+  MapImportResponse,
+  MapResult,
+  MapsSearchUrlOut,
   MemberOut,
   MessageResponse,
   MonthlyTrendPoint,
@@ -57,12 +56,18 @@ import type {
   OrganizationUpdateBody,
   Page,
   PaymentOut,
+  PermissionOut,
   PlanOut,
   ProfileOut,
   ProfileUpdateBody,
+  ProviderCredentialStatusOut,
+  ProviderCredentialUpdateBody,
   ProviderPerformancePoint,
+  ProviderTestResult,
   ProviderUsagePoint,
   RoleNameApi,
+  RolePermissionsOut,
+  SearchMode,
   SearchOut,
   SessionOut,
   SettingOut,
@@ -72,7 +77,6 @@ import type {
   UsageOut,
   UserOut,
   WebsiteScanOut,
-  ExportTrendPoint,
 } from "@/lib/api/types";
 
 // --- Auth ----------------------------------------------------------------
@@ -209,8 +213,31 @@ export const leadsApi = {
 // --- Search / providers / scanner ---------------------------------------
 
 export const searchApi = {
-  run: (body: { query: string; location?: string; industry?: string; country?: string }) =>
-    apiFetch<SearchOut>("/search", { method: "POST", body }),
+  run: (body: {
+    query: string;
+    location?: string;
+    industry?: string;
+    country?: string;
+    /** Omit to query every configured provider, as before Lead Source existed. */
+    mode?: SearchMode;
+  }) => apiFetch<SearchOut>("/search", { method: "POST", body }),
+
+  /**
+   * Extracts publicly available businesses from OpenStreetMap and Overpass.
+   *
+   * Nothing is saved: this is the review step, and `importMapResults` persists
+   * whatever the user selects.
+   */
+  extractMapResults: (body: {
+    query: string;
+    location?: string;
+    radius_km?: number;
+    max_results?: number;
+  }) => apiFetch<MapExtractResponse>("/map/extract", { method: "POST", body }),
+
+  /** Imports selected map results through the standard lead pipeline. */
+  importMapResults: (results: MapResult[]) =>
+    apiFetch<MapImportResponse>("/map/import", { method: "POST", body: { results } }),
 
   history: (query: PaginationQuery = {}) => apiFetch<Page<SearchOut>>("/search/history", { query }),
 

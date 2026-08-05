@@ -6,6 +6,8 @@ import { toast } from "sonner";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchBar } from "@/components/search/search-bar";
+import { LeadSourceSelector, type LeadSource } from "@/components/search/lead-source-selector";
+import { MapMode } from "@/components/search/map-mode";
 import { FilterPanel } from "@/components/search/filter-panel";
 import { SearchIdle } from "@/components/search/search-idle";
 import { SearchProgress } from "@/components/search/search-progress";
@@ -56,6 +58,15 @@ import type { Lead } from "@/lib/types";
  */
 export default function SearchPage() {
   const [query, setQuery] = React.useState("");
+  /**
+   * Which sources to search.
+   *
+   * Defaults to Auto: it tries the providers you have configured and falls back
+   * to public map data, so the page returns something useful on a deployment
+   * with no API keys yet instead of an empty result and a row of skipped
+   * providers.
+   */
+  const [source, setSource] = React.useState<LeadSource>("auto");
   const [filters, setFilters] = React.useState<SearchFilters>(defaultFilters);
   const [stage, setStage] = React.useState<SearchStage>("idle");
   const [providerRuns, setProviderRuns] = React.useState<ProviderRun[]>([]);
@@ -140,6 +151,7 @@ export default function SearchPage() {
     try {
       const search = await runSearch.mutateAsync({
         query: activeQuery,
+        mode: source,
         location: filters.cities.length ? filters.cities.join(", ") : undefined,
         industry: filters.industry !== "all" ? filters.industry : undefined,
         country: filters.country !== "all" ? filters.country : undefined,
@@ -212,12 +224,26 @@ export default function SearchPage() {
         description="Discover high-quality, AI-scored leads across every provider you've connected."
       />
 
-      <SearchBar
-        query={query}
-        onQueryChange={setQuery}
-        onSearch={() => startSearch()}
-        isSearching={stage === "searching"}
-      />
+      <div className="mb-5">
+        <LeadSourceSelector
+          value={source}
+          onChange={setSource}
+          disabled={stage === "searching"}
+        />
+      </div>
+
+      {/* Map Mode is a review workflow — extract, look, pick, import — so it
+          replaces the one-shot search bar rather than sitting alongside it. */}
+      {source === "map" ? (
+        <MapMode />
+      ) : (
+        <>
+          <SearchBar
+            query={query}
+            onQueryChange={setQuery}
+            onSearch={() => startSearch()}
+            isSearching={stage === "searching"}
+          />
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr]">
         <div className="space-y-6 lg:order-1 order-2">
@@ -276,7 +302,9 @@ export default function SearchPage() {
             )}
           </AnimatePresence>
         </div>
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -53,6 +53,7 @@ from services.providers import registry
 from services.providers.bing_search import DEFAULT_ENDPOINT as BING_DEFAULT_ENDPOINT
 from services.providers.google_places import SEARCH_TEXT_URL
 from services.providers.mappls import MapplsClient
+from services.providers.scraperapi import ScraperApiClient, ScraperApiError
 
 logger = logging.getLogger("leadmaster.providers.test")
 
@@ -159,11 +160,25 @@ async def test_mappls(client: MapplsClient) -> TestOutcome:
                      response_body=str(payload)[:500])
 
     expires_in = payload.get("expires_in")
+
+    # OAuth succeeding does not mean the project is entitled to the APIs the
+    # search pipeline calls — this account authenticates fine and still cannot
+    # return coordinates. So probe each capability the pipeline depends on and
+    # report them individually, rather than letting a green token imply the rest.
+    capabilities = await _probe_mappls_capabilities(token)
+    unavailable = [k for k, v in capabilities.items() if not v["available"]]
+
     return TestOutcome(
         provider=name,
         success=True,
         authenticated=True,
-        message=f"Authenticated. Token valid for {_humanize_seconds(expires_in)}.",
+        message=(
+            f"Authenticated. Token valid for {_humanize_seconds(expires_in)}. "
+            + (
+                f"{len(capabilities) - len(unavailable)}/{len(capabilities)} capabilities available"
+                + (f" — unavailable: {', '.join(unavailable)}." if unavailable else ".")
+            )
+        ),
         latency_ms=timer.elapsed_ms,
         details={
             "token_type": payload.get("token_type"),
@@ -172,8 +187,97 @@ async def test_mappls(client: MapplsClient) -> TestOutcome:
             "project_code": payload.get("project_code"),
             # Never the token itself — just enough to confirm one was issued.
             "token_length": len(token),
+            "capabilities": capabilities,
         },
     )
+
+
+async def _probe_mappls_capabilities(token: str) -> dict[str, dict]:
+    """One minimal request per capability the lead pipeline uses.
+
+    Four requests, each asking for the smallest response the endpoint allows.
+    Deliberately does not probe Route, Distance Matrix or Snap to Road: those are
+    on-demand features, and spending the user's quota to test something a search
+    never calls is the waste this integration is trying to avoid.
+
+    `coordinates` is reported separately from `geocode` because they are
+    different entitlements — Geocode answering 200 with a full address but no
+    lat/lng is exactly this account's situation, and calling that "geocode
+    available" would be misleading.
+    """
+    headers = {"Authorization": f"Bearer {token}"}
+    probes = {
+        "text_search": (
+            "https://atlas.mappls.com/api/places/textsearch/json",
+            {"query": "hospital", "itemCount": 1},
+        ),
+        "nearby": (
+            "https://atlas.mappls.com/api/places/nearby/json",
+            {"keywords": "hospital", "refLocation": "28.6139,77.2090", "radius": 5000, "page": 1},
+        ),
+        "geocode": (
+            "https://atlas.mappls.com/api/places/geocode",
+            {"address": "Connaught Place New Delhi", "itemCount": 1},
+        ),
+        "autosuggest": (
+            "https://atlas.mappls.com/api/places/search/json",
+            {"query": "Delhi", "itemCount": 1},
+        ),
+    }
+
+    results: dict[str, dict] = {}
+    geocode_payload: dict | None = None
+
+    async with httpx.AsyncClient(timeout=TEST_TIMEOUT_SECONDS) as http:
+        for capability, (url, params) in probes.items():
+            try:
+                resp = await http.get(url, params=params, headers=headers)
+                # 204 means the endpoint answered and had nothing to return —
+                # Nearby does that when no POI matches within the radius. That is
+                # a data outcome, not a missing entitlement, and reporting it as
+                # "unavailable" would send the operator hunting for a licence
+                # they already have.
+                ok = resp.status_code in (200, 204)
+                results[capability] = {
+                    "available": ok,
+                    "status": resp.status_code,
+                    "detail": (
+                        "Reachable; no results for the probe query."
+                        if resp.status_code == 204
+                        else None
+                        if ok
+                        else _short_body(resp.text)
+                    ),
+                }
+                if capability == "geocode" and ok:
+                    try:
+                        geocode_payload = resp.json()
+                    except ValueError:
+                        geocode_payload = None
+            except Exception as exc:  # noqa: BLE001 — reported, not raised
+                logger.warning("Mappls capability probe %s failed: %s", capability, exc)
+                results[capability] = {
+                    "available": False,
+                    "status": None,
+                    "detail": f"{type(exc).__name__}: {exc}"[:200],
+                }
+
+    cop = (geocode_payload or {}).get("copResults") or {}
+    has_coords = any(k for k in cop if k.lower() in ("latitude", "longitude", "lat", "lng"))
+    results["coordinates"] = {
+        "available": bool(has_coords),
+        "status": results.get("geocode", {}).get("status"),
+        "detail": None
+        if has_coords
+        else "Geocode returns addresses without lat/lng on this project, so "
+        "Mappls-sourced leads cannot be plotted. Another provider supplies map "
+        "coordinates.",
+    }
+    return results
+
+
+def _short_body(text: str, limit: int = 200) -> str:
+    return " ".join((text or "").split())[:limit]
 
 
 async def test_google_places(api_key: str | None) -> TestOutcome:
@@ -566,6 +670,59 @@ NOT_INTEGRATED_MESSAGE = (
 )
 
 
+async def test_scraperapi(api_key: str | None) -> TestOutcome:
+    """Authenticated probe against the ScraperAPI account endpoint.
+
+    Chosen because it is authenticated and, per ScraperAPI's docs, does not
+    consume a request from the plan — so testing a key repeatedly costs the
+    operator nothing. The usage counters it returns go into `details`, which is
+    genuinely useful: a key can be valid and still be out of requests.
+    """
+    if not api_key:
+        return TestOutcome(
+            success=False,
+            provider="ScraperAPI",
+            authenticated=False,
+            message="No API key configured.",
+        )
+
+    client = ScraperApiClient(api_key)
+    started = time.perf_counter()
+    try:
+        account = await client.account()
+    except ScraperApiError as exc:
+        return TestOutcome(
+            success=False,
+            provider="ScraperAPI",
+            latency_ms=int((time.perf_counter() - started) * 1000),
+            authenticated=False,
+            message=str(exc),
+        )
+    except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+        logger.exception("ScraperAPI test failed")
+        return TestOutcome(
+            success=False,
+            provider="ScraperAPI",
+            latency_ms=int((time.perf_counter() - started) * 1000),
+            authenticated=False,
+            message=f"{type(exc).__name__}: {exc}",
+            details=_describe_http_error(exc),
+        )
+
+    used = account.get("requestCount")
+    limit = account.get("requestLimit")
+    return TestOutcome(
+        success=True,
+        provider="ScraperAPI",
+        latency_ms=int((time.perf_counter() - started) * 1000),
+        authenticated=True,
+        message=f"Authenticated. {used}/{limit} requests used this period."
+        if used is not None and limit is not None
+        else "Authenticated.",
+        details=account,
+    )
+
+
 async def test_provider(row: ApiProvider) -> TestOutcome:
     """Runs the connectivity test for one provider row.
 
@@ -590,6 +747,9 @@ async def test_provider(row: ApiProvider) -> TestOutcome:
 
     if row.name == "Geoapify":
         return await test_geoapify(key)
+
+    if row.name == "ScraperAPI":
+        return await test_scraperapi(key)
 
     if row.name == "OpenStreetMap":
         return await test_openstreetmap()

@@ -67,6 +67,14 @@ PROVIDER_CREDENTIAL_SPECS: dict[str, CredentialSpec] = {
         key_env_var="BING_SEARCH_API_KEY",
         help_url="https://portal.azure.com/",
     ),
+    # Not a lead source: it holds a credential but has no adapter, so it never
+    # appears in a search's provider runs. It is a fetch backend for the
+    # website-crawling path — see services/providers/scraperapi.py.
+    "ScraperAPI": CredentialSpec(
+        key_label="API key",
+        key_env_var="SCRAPERAPI_KEY",
+        help_url="https://dashboard.scraperapi.com/",
+    ),
     "Geoapify": CredentialSpec(
         key_label="API key",
         key_env_var="GEOAPIFY_API_KEY",

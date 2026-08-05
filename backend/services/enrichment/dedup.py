@@ -343,18 +343,34 @@ async def _load_candidates(
         for domain in domains:
             clauses.append(Company.website.ilike(f"%{domain}%"))
     if phones:
+        # `phones` holds *normalized* keys (digits only, last 10). Stored numbers
+        # keep whatever formatting the provider sent — "0755 277 4851" — so
+        # comparing the key against the raw column matched nothing whenever the
+        # stored value had separators, and the duplicate was admitted. Strip the
+        # column to digits so both sides are in the same alphabet.
+        digits_only = func.regexp_replace(Lead.phone, r"[^0-9]", "", "g")
         for phone in phones:
-            clauses.append(Lead.phone.ilike(f"%{phone}%"))
+            clauses.append(digits_only.ilike(f"%{phone}%"))
     if cities:
-        # `normalize_city` lowercases, but stored values keep their original
-        # case ("Pune"), so a plain IN() never matched and name+city dedup
-        # silently failed for any lead whose only signal was its city.
+        # Two forms, because `normalize_city` is not just a lowercase: it takes
+        # the text before the first comma ("Bhopal, Madhya Pradesh 462003" ->
+        # "bhopal"). Comparing that against the raw lowercased column missed
+        # every row stored with a full address-style city, which is exactly what
+        # map providers return.
         #
-        # This can't use a plain index on `city`; if city-only dedup ever
+        # Both clauses are kept rather than replacing one with the other: the
+        # raw form still matches rows stored as a bare city name, and widening
+        # candidate lookup can only find more duplicates, never fewer.
+        #
+        # Neither can use a plain index on `city`; if city-only dedup ever
         # dominates the query plan, add `CREATE INDEX ... ON companies
-        # (lower(city))`. Not done yet because the clause is OR'd with the
-        # others, scoped to one organization, and capped at 500 rows below.
+        # (lower(split_part(city, ',', 1)))`. Not done yet because the clause is
+        # OR'd with the others, scoped to one organization, and capped at 500
+        # rows below.
         clauses.append(func.lower(Company.city).in_(cities))
+        clauses.append(
+            func.btrim(func.lower(func.split_part(Company.city, ",", 1))).in_(cities)
+        )
 
     if not clauses:
         return []

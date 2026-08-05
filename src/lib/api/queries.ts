@@ -49,11 +49,13 @@ import type {
   ExportCreateBody,
   ExportResourceApi,
   ExportStatusApi,
+  ImportSource,
   LeadCreateBody,
   LeadUpdateBody,
-  ImportSource,
+  MapResult,
   ProviderCredentialUpdateBody,
   RoleNameApi,
+  SearchMode,
 } from "@/lib/api/types";
 
 /** Central key registry, so invalidations can't drift from the queries. */
@@ -273,8 +275,14 @@ export function useSearchHistory(query: PaginationQuery = {}) {
 export function useRunSearch() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: { query: string; location?: string; industry?: string; country?: string }) =>
-      searchApi.run(body),
+    mutationFn: (body: {
+      query: string;
+      location?: string;
+      industry?: string;
+      country?: string;
+      /** Omit to query every configured provider (pre-Lead-Source behaviour). */
+      mode?: SearchMode;
+    }) => searchApi.run(body),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: queryKeys.searches });
       client.invalidateQueries({ queryKey: queryKeys.leads });
@@ -768,4 +776,32 @@ export function useNearbyLeads(
 
 export function useGeocode() {
   return useMutation({ mutationFn: (address: string) => mapApi.geocode(address) });
+}
+
+// --- Map Mode -------------------------------------------------------------
+
+/**
+ * Extracts public map results for review.
+ *
+ * A mutation rather than a query: it is an explicit user action with a cost in
+ * time, and caching it by keyword would hide the fact that OSM data changes.
+ */
+export function useExtractMapResults() {
+  return useMutation({
+    mutationFn: (body: { query: string; location?: string; radius_km?: number; max_results?: number }) =>
+      searchApi.extractMapResults(body),
+  });
+}
+
+/** Imports the selected map results, then refreshes everything they affect. */
+export function useImportMapResults() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (results: MapResult[]) => searchApi.importMapResults(results),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: queryKeys.leads });
+      client.invalidateQueries({ queryKey: queryKeys.dashboard });
+      client.invalidateQueries({ queryKey: queryKeys.analytics });
+    },
+  });
 }

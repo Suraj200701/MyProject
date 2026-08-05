@@ -145,6 +145,12 @@ class Settings(BaseSettings):
     BING_SEARCH_API_KEY: str = ""
     BING_SEARCH_ENDPOINT: str = "https://api.bing.microsoft.com/v7.0/search"
 
+    # --- ScraperAPI (optional proxy fetch backend) ---
+    # Used by the website-crawling path for sites whose WAF rejects datacenter
+    # IPs outright. Absent means those fetches go direct, which is the default
+    # and costs nothing. It sources no leads of its own, so it has no adapter.
+    SCRAPERAPI_KEY: str = ""
+
     # --- Geoapify (OpenStreetMap-derived places + geocoding) ---
     # Single API key, passed as an `apiKey` query parameter.
     GEOAPIFY_API_KEY: str = ""

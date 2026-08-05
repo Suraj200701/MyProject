@@ -42,7 +42,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import settings
-from models.enums import SearchStatus
+from models.enums import LeadSourceType, SearchMode, SearchStatus
 from models.lead import Company, Lead
 from models.search import ApiProvider, Search, SearchProviderRun, WebsiteScan
 from schemas.search import SearchCreate, WebsiteScanCreate
@@ -63,15 +63,38 @@ from utils.url_guard import resolve_and_validate
 
 logger = logging.getLogger("leadmaster.search")
 
-# Set on the `NormalizedLead` a saved scan produces, where dedup and scoring can
-# see which pipeline the lead came from.
+# Recorded on a scan-saved lead as `source_provider`, alongside
+# `source_type = "scanner"`.
 #
-# It is not a persisted column: `Lead` has no `source`, and `provider_id` points
-# at `api_providers` — the scanner has no row there, and inventing one would put a
-# non-provider card in the API Manager grid. Durable provenance for a scan-sourced
-# lead is the `Website Scan` tag plus `WebsiteScan.lead_id`, both of which survive
-# into exports.
+# It is not a `provider_id`: that column points at `api_providers`, the scanner
+# has no row there, and inventing one would put a non-provider card in the API
+# Manager grid. `source_provider` is a free-text label precisely so origins
+# without a catalogue row can still name themselves.
 SCANNER_SOURCE = "Website Scanner"
+
+# Providers that serve public map data: open licence, no credential, no API key.
+# This is the set Map Mode draws on.
+#
+# Membership is by capability, not by "has no credential": Company Website Search
+# also needs no credential, but it crawls company websites rather than reading a
+# public map, so it belongs with the API sources. Getting that wrong would make
+# Map Mode quietly start crawling third-party sites.
+MAP_PROVIDER_NAMES = frozenset({"OpenStreetMap", "Overpass API"})
+
+
+def _partition_by_source(resolved):
+    """Splits resolved providers into (map, api) by `MAP_PROVIDER_NAMES`."""
+    map_side = [(row, adapter) for row, adapter in resolved if row.name in MAP_PROVIDER_NAMES]
+    api_side = [(row, adapter) for row, adapter in resolved if row.name not in MAP_PROVIDER_NAMES]
+    return map_side, api_side
+
+
+def _source_type_for(provider_name: str | None) -> str:
+    """Which origin label a lead from this provider gets."""
+    if provider_name in MAP_PROVIDER_NAMES:
+        return LeadSourceType.MAP.value
+    return LeadSourceType.API.value
+
 
 # Provider-run status mapping. SKIPPED is its own state: a provider without
 # credentials never ran, and reporting that as FAILED made every search look
@@ -111,11 +134,35 @@ async def run_search(
     # test green, and still never be queried.
     provider_rows = list((await db.execute(select(ApiProvider))).scalars().all())
 
-    resolved = resolve_lead_providers(provider_rows)
+    all_resolved = resolve_lead_providers(provider_rows)
+    map_resolved, api_resolved = _partition_by_source(all_resolved)
+
+    # Which sources this run is allowed to use.
+    #
+    # `mode is None` keeps the pre-Lead-Source behaviour — every configured
+    # provider at once — so API clients that never heard of modes are unaffected.
+    mode = data.mode
+    if mode is SearchMode.MAP:
+        resolved = map_resolved
+    elif mode is SearchMode.API:
+        resolved = api_resolved
+    elif mode is SearchMode.AUTO:
+        # Auto runs the API side first and only falls back below, so it starts
+        # with the API set. The reservation still has to cover the fallback.
+        resolved = api_resolved
+    else:
+        resolved = all_resolved
+
     unconfigured = [row for row in provider_rows if row.name not in {r.name for r, _ in resolved}]
 
-    # Only configured providers can incur cost, so only they are reserved for.
-    estimate = usage_service.estimate_search_cost([row for row, _ in resolved])
+    # Only providers this mode can actually call are reserved for. Auto also
+    # reserves the map side, because the fallback may run: over-reserving is
+    # refunded at settle time, whereas under-reserving would let a search start
+    # work it cannot pay for.
+    reservable = [row for row, _ in resolved]
+    if mode is SearchMode.AUTO:
+        reservable += [row for row, _ in map_resolved]
+    estimate = usage_service.estimate_search_cost(reservable)
     reservation = await usage_service.reserve_credits(
         db, organization_id, estimate, f"Lead search: {data.query[:120]}", exempt=metering_exempt
     )
@@ -141,6 +188,24 @@ async def run_search(
         )
 
         results = await _query_providers(resolved, query)
+
+        # Auto mode: fall back to public map data when the API side produced
+        # nothing usable.
+        #
+        # "Nothing usable" is zero leads, not "a provider failed" — a run where
+        # Google errored but Mappls returned twelve leads is a success, and
+        # spending map calls on top of it would be waste. The fallback also runs
+        # when there was no API provider to call at all, which is the common case
+        # on a fresh deployment with no keys entered yet.
+        if mode is SearchMode.AUTO and not any(result.leads for result in results):
+            fallback = await _query_providers(map_resolved, query)
+            results.extend(fallback)
+            # The map providers really ran, so they join the set that gets a
+            # provider_run row and can be billed for what they returned.
+            resolved = list(resolved) + list(map_resolved)
+            unconfigured = [
+                row for row in provider_rows if row.name not in {r.name for r, _ in resolved}
+            ]
 
         # Record every provider that couldn't run, so the UI can explain why a
         # search returned little rather than looking silently broken.
@@ -201,6 +266,11 @@ async def run_search(
                     status="new",
                     tags=lead.tags or None,
                     provider_id=row.id if row else None,
+                    # Provenance that outlives the provider row: `provider_id` is
+                    # SET NULL if the catalogue entry is deleted, and the UI needs
+                    # to keep showing where the lead came from.
+                    source_type=_source_type_for(lead.source_provider),
+                    source_provider=lead.source_provider,
                     search_id=search.id,
                     created_by_id=user_id,
                     ai_summary=summary,
@@ -448,6 +518,8 @@ async def save_scan_as_lead(
         lead_score=score,
         status="new",
         tags=unique_lead.tags or None,
+        source_type=LeadSourceType.SCANNER.value,
+        source_provider=SCANNER_SOURCE,
         created_by_id=user_id,
         ai_summary=summary,
     )
