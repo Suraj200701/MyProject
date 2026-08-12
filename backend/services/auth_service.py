@@ -1,6 +1,7 @@
 """Business logic for signup, login, token refresh, password reset, email
 verification, and OTP-based login."""
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -31,6 +32,8 @@ from notifications.email_service import send_otp_email, send_password_reset_emai
 from repositories.user_repository import UserRepository
 from schemas.user import LoginRequest, SignupRequest, TokenResponse
 from utils.exceptions import BadRequestError, ConflictError, UnauthorizedError
+
+logger = logging.getLogger("leadmaster.auth")
 
 
 async def _get_role(db: AsyncSession, name: RoleName) -> Role:
@@ -128,7 +131,19 @@ async def signup(db: AsyncSession, data: SignupRequest, request: Request | None 
     )
 
     tokens = await _issue_session(db, user, request)
-    await send_verification_email(user.email, verification_token)
+
+    # A delivery failure must not fail the signup. By this point the user, org,
+    # membership, wallet, subscription and session are all committed, so raising
+    # here returns a 500 while a real account stays behind — and the retry then
+    # hits "An account with this email already exists", which tells the user the
+    # opposite of what happened. Verification can be re-requested from Settings
+    # (POST /auth/resend-verification), so a logged failure costs far less than
+    # a signup the user believes was rejected.
+    try:
+        await send_verification_email(user.email, verification_token)
+    except Exception:
+        logger.exception("Verification email to %s failed; signup kept.", user.email)
+
     return tokens
 
 
@@ -186,7 +201,16 @@ async def request_password_reset(db: AsyncSession, email: str) -> None:
         )
     )
     await db.commit()
-    await send_password_reset_email(user.email, token)
+
+    # Non-fatal for the same reason as signup, plus a privacy one. This endpoint
+    # answers 200 for every address precisely so it cannot be used to test which
+    # emails are registered — but only a *real* user reaches this line, so an
+    # escaping delivery error turns a 500 into exactly that oracle: 500 means the
+    # account exists, 200 means it doesn't.
+    try:
+        await send_password_reset_email(user.email, token)
+    except Exception:
+        logger.exception("Password reset email to %s failed.", user.email)
 
 
 async def reset_password(db: AsyncSession, token: str, new_password: str) -> None:

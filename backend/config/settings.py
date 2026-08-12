@@ -220,6 +220,18 @@ class Settings(BaseSettings):
     STRIPE_PUBLISHABLE_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
 
+    # --- Email delivery ---
+    # Two transports, tried in the order below (see notifications/email_service.py).
+    #
+    # Resend goes out over HTTPS, which matters in production: most PaaS hosts —
+    # Render included — block outbound SMTP ports (25/465/587) to curb spam, so a
+    # perfectly valid smtp.gmail.com config there fails with a *connect timeout*
+    # rather than an auth error. Port 443 is never blocked.
+    #
+    # SMTP stays for local development (Mailhog/Mailpit) and for deployments that
+    # do allow it.
+    RESEND_API_KEY: str = ""
+
     # --- Email (SMTP) ---
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
