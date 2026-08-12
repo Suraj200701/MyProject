@@ -39,7 +39,12 @@ from models.lead import Lead
 from models.search import ApiProvider
 from services import usage_service
 from services.enrichment import dedup, scoring
-from services.providers.base import NormalizedLead, ProviderSearchResult, SearchQuery
+from services.providers.base import (
+    NormalizedLead,
+    ProviderRunStatus,
+    ProviderSearchResult,
+    SearchQuery,
+)
 from services.providers.registry import resolve_lead_providers
 from utils.exceptions import BadRequestError
 
@@ -75,6 +80,42 @@ class MapExtraction:
         if failures:
             return failures[0].error
         return None
+
+
+async def extract_google_maps(
+    *,
+    keywords: list[str],
+    location: str | None,
+    viewport=None,
+    max_results: int | None = None,
+) -> MapExtraction:
+    """Google Maps Extractor: official Places API, optionally viewport-scoped.
+
+    Returned as a `MapExtraction` so it flows through exactly the same review and
+    import path as the OSM source — same dedup, scoring, persistence and export.
+    """
+    from services.providers.google_places_extractor import GoogleMapsExtractor
+
+    extractor = GoogleMapsExtractor()
+    if not extractor.is_configured:
+        raise BadRequestError(
+            "Google Places is not configured. Add GOOGLE_MAPS_API_KEY, or use the "
+            "OpenStreetMap source, which needs no key."
+        )
+
+    leads, errors = await extractor.collect(
+        keywords=keywords,
+        location=location,
+        viewport=viewport,
+        max_results=max_results or 20,
+    )
+    run = ProviderSearchResult(
+        provider_name=extractor.name,
+        status=ProviderRunStatus.COMPLETED if leads or not errors else ProviderRunStatus.FAILED,
+        leads=leads,
+        error="; ".join(errors)[:500] if errors else None,
+    )
+    return MapExtraction(results=leads, provider_runs=[run])
 
 
 async def extract(

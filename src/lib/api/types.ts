@@ -763,6 +763,17 @@ export interface MapResult {
   osm_url: string | null;
 }
 
+/** The map rectangle currently on screen, sent when the user pans or zooms. */
+export interface MapViewport {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}
+
+/** Which source Map Mode collects from. */
+export type MapSource = "osm" | "google_maps";
+
 export interface MapExtractResponse {
   results: MapResult[];
   provider_runs: { provider_id: string | null; provider_name: string; status: string; results_found: number }[];

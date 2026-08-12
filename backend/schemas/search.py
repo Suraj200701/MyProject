@@ -21,7 +21,11 @@ class SearchCreate(BaseModel):
 
 
 class ProviderRunOut(BaseModel):
-    provider_id: uuid.UUID
+    # Optional because not every source has a catalogue row. The Google Maps
+    # Extractor runs through the Places credential rather than its own
+    # `api_providers` entry, and `run_search` already passes None for a run it
+    # cannot match back to a row — the schema just used to reject it.
+    provider_id: uuid.UUID | None = None
     provider_name: str
     status: SearchStatus
     results_found: int
@@ -145,6 +149,20 @@ class ProviderTestResult(BaseModel):
 # --- Map Mode -------------------------------------------------------------
 
 
+class MapViewport(BaseModel):
+    """The map rectangle currently on screen.
+
+    Sent when the user pans or zooms: Places `searchText` takes this as a
+    `locationRestriction`, so "collect what is visible now" is one more API call
+    rather than anything read off the rendered map.
+    """
+
+    south: float = Field(ge=-90, le=90)
+    west: float = Field(ge=-180, le=180)
+    north: float = Field(ge=-90, le=90)
+    east: float = Field(ge=-180, le=180)
+
+
 class MapExtractRequest(BaseModel):
     """Keyword + location for a public map extraction."""
 
@@ -153,6 +171,14 @@ class MapExtractRequest(BaseModel):
     # Overpass needs a spatial filter; the bounds match the adapter's clamp.
     radius_km: float | None = Field(default=None, ge=1, le=100)
     max_results: int | None = Field(default=None, ge=1, le=200)
+    # Which source to collect from. "osm" keeps the previous behaviour and stays
+    # the default, so existing callers are unaffected.
+    source: Literal["osm", "google_maps"] = "osm"
+    # Extra keywords run as separate searches. Places ranks one blended query
+    # rather than unioning terms, so "panel, control panel" as a single string
+    # returns fewer distinct businesses than the two run apart.
+    extra_keywords: list[str] = Field(default_factory=list, max_length=10)
+    viewport: MapViewport | None = None
 
 
 class MapResultOut(BaseModel):

@@ -45,6 +45,8 @@ import type {
   MapExtractResponse,
   MapImportResponse,
   MapResult,
+  MapSource,
+  MapViewport,
   MapsSearchUrlOut,
   MemberOut,
   MessageResponse,
@@ -245,6 +247,12 @@ export const searchApi = {
     location?: string;
     radius_km?: number;
     max_results?: number;
+    /** "osm" (default, no key) or "google_maps" (official Places API). */
+    source?: MapSource;
+    /** Extra keywords, each run as its own search. */
+    extra_keywords?: string[];
+    /** Restricts collection to the visible map rectangle. */
+    viewport?: MapViewport;
   }) => apiFetch<MapExtractResponse>("/map/extract", { method: "POST", body }),
 
   /** Imports selected map results through the standard lead pipeline. */

@@ -338,7 +338,11 @@ def _to_map_result(lead, index: int) -> MapResultOut:
         longitude=lead.lng,
         rating=lead.rating,
         source_provider=lead.source_provider,
-        osm_url=f"https://www.openstreetmap.org/{osm_id}" if osm_id else None,
+        # Whichever public map page this business has. OSM results carry an
+        # element id; Google results carry a `googleMapsUri` the API supplies
+        # directly, which is the "Google Maps URL" column of an extractor.
+        osm_url=raw.get("google_maps_url")
+        or (f"https://www.openstreetmap.org/{osm_id}" if osm_id else None),
     )
 
 
@@ -374,13 +378,31 @@ async def extract_map_results(
     calls `/map/import`. Unmetered, because both sources are free public services;
     credits settle on import, where leads are actually created.
     """
-    extraction = await map_extraction.extract(
-        db,
-        query=payload.query,
-        location=payload.location,
-        radius_km=payload.radius_km,
-        max_results=payload.max_results,
-    )
+    if payload.source == "google_maps":
+        # Google Maps Extractor: official Places API, viewport-scoped when the
+        # user has panned. Returns the same shape as the OSM path, so review and
+        # import below are untouched.
+        from services.providers.google_places_extractor import Viewport
+
+        viewport = None
+        if payload.viewport is not None:
+            v = payload.viewport
+            viewport = Viewport(south=v.south, west=v.west, north=v.north, east=v.east)
+
+        extraction = await map_extraction.extract_google_maps(
+            keywords=[payload.query, *payload.extra_keywords],
+            location=payload.location,
+            viewport=viewport,
+            max_results=payload.max_results,
+        )
+    else:
+        extraction = await map_extraction.extract(
+            db,
+            query=payload.query,
+            location=payload.location,
+            radius_km=payload.radius_km,
+            max_results=payload.max_results,
+        )
 
     provider_rows = {
         row.name: row

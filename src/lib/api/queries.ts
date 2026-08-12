@@ -54,6 +54,8 @@ import type {
   LeadCreateBody,
   LeadUpdateBody,
   MapResult,
+  MapSource,
+  MapViewport,
   ProviderCredentialUpdateBody,
   RoleNameApi,
   SearchMode,
@@ -789,8 +791,15 @@ export function useGeocode() {
  */
 export function useExtractMapResults() {
   return useMutation({
-    mutationFn: (body: { query: string; location?: string; radius_km?: number; max_results?: number }) =>
-      searchApi.extractMapResults(body),
+    mutationFn: (body: {
+      query: string;
+      location?: string;
+      radius_km?: number;
+      max_results?: number;
+      source?: MapSource;
+      extra_keywords?: string[];
+      viewport?: MapViewport;
+    }) => searchApi.extractMapResults(body),
   });
 }
 

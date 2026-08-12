@@ -94,7 +94,7 @@ describe("MapMode", () => {
     await extract(user);
 
     expect(extractMutate).toHaveBeenCalledWith(
-      { query: "hospital", location: "Bhopal" },
+      { query: "hospital", location: "Bhopal", source: "osm" },
       expect.anything(),
     );
     expect(await screen.findByText(/Found/)).toBeInTheDocument();
@@ -208,5 +208,31 @@ describe("MapMode", () => {
     render(<MapMode />);
 
     expect(screen.getByRole("button", { name: /Extracting/i })).toBeDisabled();
+  });
+});
+
+describe("MapMode source selection", () => {
+  it("defaults to OpenStreetMap, which needs no key", async () => {
+    const user = userEvent.setup();
+    extractMutate.mockImplementation((_b, opts) =>
+      opts.onSuccess({ results: [result()], provider_runs: [], blocked_reason: null }),
+    );
+    render(<MapMode />);
+    await extract(user);
+
+    expect(extractMutate.mock.calls[0][0].source).toBe("osm");
+  });
+
+  it("collects from the Google Maps Extractor when chosen", async () => {
+    const user = userEvent.setup();
+    extractMutate.mockImplementation((_b, opts) =>
+      opts.onSuccess({ results: [result()], provider_runs: [], blocked_reason: null }),
+    );
+    render(<MapMode />);
+
+    await user.click(screen.getByLabelText(/Google Maps Extractor/));
+    await extract(user);
+
+    expect(extractMutate.mock.calls[0][0].source).toBe("google_maps");
   });
 });
