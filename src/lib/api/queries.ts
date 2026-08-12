@@ -23,6 +23,7 @@ import {
 import {
   analyticsApi,
   authApi,
+  enrichmentApi,
   billingApi,
   dashboardApi,
   exportsApi,
@@ -802,6 +803,19 @@ export function useImportMapResults() {
       client.invalidateQueries({ queryKey: queryKeys.leads });
       client.invalidateQueries({ queryKey: queryKeys.dashboard });
       client.invalidateQueries({ queryKey: queryKeys.analytics });
+    },
+  });
+}
+
+/** Runs contact enrichment, then refreshes everything it can change. */
+export function useEnrichLeads() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { lead_ids?: string[]; all_unenriched?: boolean; limit?: number }) =>
+      enrichmentApi.enrich(body),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: queryKeys.leads });
+      client.invalidateQueries({ queryKey: queryKeys.dashboard });
     },
   });
 }

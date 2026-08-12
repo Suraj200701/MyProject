@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { AlertCircle, ChevronLeft, ChevronRight, Search as SearchIcon } from "lucide-react";
 
 import { leadColumns } from "@/components/leads/columns";
+import { EnrichLeads } from "@/components/leads/enrich-leads";
 import { LeadsToolbar, type SavedView } from "@/components/leads/leads-toolbar";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
@@ -144,6 +145,10 @@ export function LeadsDataTable() {
 
   return (
     <div>
+      {/* Contact enrichment sits above the toolbar because it acts on the
+          current selection and reports a summary that needs room to breathe. */}
+      <EnrichLeads selectedIds={selectedIds} className="mb-4" />
+
       <LeadsToolbar
         table={table}
         search={search}

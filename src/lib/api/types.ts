@@ -775,3 +775,41 @@ export interface MapImportResponse {
   duplicates: number;
   lead_ids: string[];
 }
+
+// --- Contact enrichment ---------------------------------------------------
+
+export type EnrichmentStatus =
+  | "not_attempted"
+  | "discovering"
+  | "website_found"
+  | "enriching"
+  | "enriched"
+  | "no_website_found"
+  | "failed";
+
+export interface EnrichmentOutcomeOut {
+  lead_id: string;
+  status: EnrichmentStatus;
+  website: string | null;
+  website_confidence: number | null;
+  fields_added: string[];
+  /** field name -> the page URL its value was read from. Always a URL. */
+  field_sources: Record<string, string>;
+  error: string | null;
+}
+
+export interface EnrichmentSummaryOut {
+  total: number;
+  processed: number;
+  website_found: number;
+  phone_found: number;
+  email_found: number;
+  gst_found: number;
+  social_found: number;
+  no_website: number;
+  failed: number;
+  credits_charged: number;
+  /** False when Google Places has no key, so the UI can say why nothing was found. */
+  discovery_available: boolean;
+  results: EnrichmentOutcomeOut[];
+}

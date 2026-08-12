@@ -20,6 +20,9 @@ from schemas.lead import (
     BulkDeleteRequest,
     CsvImportResult,
     CsvImportRowError,
+    EnrichLeadsRequest,
+    EnrichmentOutcomeOut,
+    EnrichmentSummaryOut,
     LeadActivityOut,
     LeadCreate,
     LeadDetailOut,
@@ -29,7 +32,8 @@ from schemas.lead import (
     LeadUpdate,
     SortOrder,
 )
-from services import lead_import
+from services import lead_import, usage_service
+from services.enrichment.lead_enrichment import LeadEnricher
 from services.providers.base import NormalizedLead
 from utils.exceptions import BadRequestError, NotFoundError
 from utils.pagination import Page, PaginationParams, paginate, pagination_params
@@ -323,3 +327,71 @@ async def list_activities(
     if lead is None:
         raise NotFoundError("Lead not found")
     return sorted(lead.activities, key=lambda a: a.created_at)
+
+
+@router.post("/enrich", response_model=EnrichmentSummaryOut, status_code=200)
+async def enrich_leads(
+    payload: EnrichLeadsRequest,
+    organization: Organization = Depends(get_current_organization),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Enriches leads with publicly available contact information.
+
+    Discovery uses the official Google Places API and only when its key is
+    configured; without it the lead keeps an empty website and enrichment still
+    runs on whatever public data exists. Crawling reuses the scanner's guarded
+    fetch path, so only publicly reachable pages are read.
+
+    Credits settle against leads that actually performed outbound work, so a
+    cached or skipped lead costs nothing.
+    """
+    enricher = LeadEnricher()
+
+    lead_ids = list(payload.lead_ids)
+    if payload.all_unenriched and not lead_ids:
+        # Server-side selection, oldest first, bounded by `limit`.
+        stmt = (
+            select(Lead.id)
+            .where(
+                Lead.organization_id == organization.id,
+                Lead.enrichment_status.is_(None),
+            )
+            .order_by(Lead.created_at)
+            .limit(payload.limit)
+        )
+        lead_ids = list((await db.execute(stmt)).scalars().all())
+
+    if not lead_ids:
+        raise BadRequestError("Select at least one lead to enrich.")
+
+    exempt = usage_service.is_metering_exempt(user)
+    summary = await enricher.enrich_many(
+        db, organization.id, lead_ids, metering_exempt=exempt
+    )
+
+    return EnrichmentSummaryOut(
+        total=summary.total,
+        processed=summary.processed,
+        website_found=summary.website_found,
+        phone_found=summary.phone_found,
+        email_found=summary.email_found,
+        gst_found=summary.gst_found,
+        social_found=summary.social_found,
+        no_website=summary.no_website,
+        failed=summary.failed,
+        credits_charged=summary.credits_charged,
+        discovery_available=enricher.discovery_available,
+        results=[
+            EnrichmentOutcomeOut(
+                lead_id=o.lead_id,
+                status=o.status,
+                website=o.website,
+                website_confidence=o.website_confidence,
+                fields_added=o.fields_added,
+                field_sources=o.field_sources,
+                error=o.error,
+            )
+            for o in summary.results
+        ],
+    )

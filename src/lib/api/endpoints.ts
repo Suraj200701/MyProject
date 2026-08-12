@@ -24,6 +24,7 @@ import type {
   DayPoint,
   DocumentOut,
   DownloadTokenOut,
+  EnrichmentSummaryOut,
   ExportCreateBody,
   ExportOptionsOut,
   ExportOut,
@@ -211,6 +212,17 @@ export const leadsApi = {
 };
 
 // --- Search / providers / scanner ---------------------------------------
+
+/**
+ * Enriches leads with publicly available contact information.
+ *
+ * Website discovery uses the official Google Places API and only when its key is
+ * configured server-side; the key never reaches the browser.
+ */
+export const enrichmentApi = {
+  enrich: (body: { lead_ids?: string[]; all_unenriched?: boolean; limit?: number }) =>
+    apiFetch<EnrichmentSummaryOut>("/leads/enrich", { method: "POST", body }),
+};
 
 export const searchApi = {
   run: (body: {

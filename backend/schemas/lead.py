@@ -188,3 +188,49 @@ class CsvImportResult(BaseModel):
     invalid_rows: int
     errors: list[CsvImportRowError] = Field(default_factory=list)
     dedup_signals: dict[str, int] = Field(default_factory=dict)
+
+
+# --- Contact enrichment ---------------------------------------------------
+
+
+class EnrichLeadsRequest(BaseModel):
+    """Which leads to enrich.
+
+    `lead_ids` empty with `all_unenriched=true` is the "Enrich All" button: the
+    server picks the leads rather than the browser sending thousands of ids.
+    """
+
+    lead_ids: list[uuid.UUID] = Field(default_factory=list, max_length=500)
+    all_unenriched: bool = False
+    # Bounds "Enrich All" so one click cannot start an unbounded run.
+    limit: int = Field(default=50, ge=1, le=500)
+
+
+class EnrichmentOutcomeOut(BaseModel):
+    lead_id: uuid.UUID
+    status: str
+    website: str | None = None
+    website_confidence: int | None = None
+    fields_added: list[str] = Field(default_factory=list)
+    # field name -> page URL the value was read from.
+    field_sources: dict[str, str] = Field(default_factory=dict)
+    error: str | None = None
+
+
+class EnrichmentSummaryOut(BaseModel):
+    """Exactly the counters the bulk UI shows."""
+
+    total: int
+    processed: int
+    website_found: int
+    phone_found: int
+    email_found: int
+    gst_found: int
+    social_found: int
+    no_website: int
+    failed: int
+    credits_charged: int
+    # False when Google Places has no key: the UI explains why discovery found
+    # nothing instead of implying the businesses have no websites.
+    discovery_available: bool
+    results: list[EnrichmentOutcomeOut] = Field(default_factory=list)

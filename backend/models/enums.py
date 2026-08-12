@@ -192,3 +192,23 @@ class SearchMode(str, enum.Enum):
     # API first; fall back to the map providers when the APIs are unconfigured,
     # fail, or return nothing usable.
     AUTO = "auto"
+
+
+class EnrichmentStatus(str, enum.Enum):
+    """How far contact enrichment has got for a lead.
+
+    Stored as a plain string on `Lead.enrichment_status` (see the model for why
+    these are not Postgres enums). Terminal states are ENRICHED,
+    NO_WEBSITE_FOUND and FAILED; the two -ING states exist so a long bulk run is
+    legible while it is in flight.
+    """
+
+    NOT_ATTEMPTED = "not_attempted"
+    DISCOVERING = "discovering"
+    WEBSITE_FOUND = "website_found"
+    ENRICHING = "enriching"
+    ENRICHED = "enriched"
+    # Searched (or had nothing to search with) and found no trustworthy site.
+    # A normal outcome, not an error — most map-sourced businesses have no site.
+    NO_WEBSITE_FOUND = "no_website_found"
+    FAILED = "failed"

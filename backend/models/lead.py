@@ -65,6 +65,28 @@ class Lead(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # machine. Both are nullable, so existing rows stay valid and untouched.
     source_type: Mapped[str | None] = mapped_column(String(16), index=True)
     source_provider: Mapped[str | None] = mapped_column(String(64))
+
+    # --- Contact enrichment -------------------------------------------
+    #
+    # Only provenance and state live here. The *values* enrichment produces
+    # already have homes — `Lead.phone`, `Lead.email`, `Company.website`,
+    # `Company.gst_number` — and duplicating them would create two sources of
+    # truth that drift.
+    #
+    # `field_sources` is JSONB rather than one `*_source` column per field: the
+    # set of enriched fields grows (alternate phone, WhatsApp, contact person),
+    # and each addition would otherwise need a migration. It maps a field name
+    # to the page URL the value was read from, e.g.
+    # `{"phone": "https://acme.com/contact"}`.
+    enrichment_status: Mapped[str | None] = mapped_column(String(16), index=True)
+    enrichment_error: Mapped[str | None] = mapped_column(String(500))
+    enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # 0-100. How strongly the discovered website was verified to belong to this
+    # business; null when the website came from the provider rather than search.
+    website_confidence: Mapped[int | None] = mapped_column(SmallInteger)
+    website_source: Mapped[str | None] = mapped_column(String(500))
+    field_sources: Mapped[dict | None] = mapped_column(JSONB)
+    social_profiles: Mapped[dict | None] = mapped_column(JSONB)
     search_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("searches.id", ondelete="SET NULL")
     )
