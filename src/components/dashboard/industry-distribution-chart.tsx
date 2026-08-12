@@ -56,7 +56,14 @@ export function IndustryDistributionChart() {
             </PieChart>
           </ResponsiveContainer>
         </div>
-        <div className="flex w-full flex-col gap-2.5">
+        {/* `min-w-0 flex-1`, not `w-full`. As a flex item this defaults to
+            `min-width: auto`, so it refuses to shrink below its content and
+            overflows the card — which has `overflow: hidden`, so the industry
+            labels were simply clipped off the right edge. Measured at a 1280px
+            viewport (a 1920px laptop at the usual 150% scaling): the legend ran
+            87px past the card. It also means the `truncate` below can finally
+            engage, since truncation needs an ancestor that is allowed to shrink. */}
+        <div className="flex min-w-0 flex-1 flex-col gap-2.5">
           {industryDistribution.map((entry, i) => (
             <div key={entry.name} className="flex items-center gap-2.5 text-sm">
               <span
