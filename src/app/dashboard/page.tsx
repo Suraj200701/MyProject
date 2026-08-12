@@ -111,8 +111,13 @@ export default function DashboardPage() {
               ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="animate-fade-up lg:col-span-2" style={{ animationDelay: "80ms", animationFillMode: "backwards" }}>
+      {/* Stacked rather than side by side, at every width.
+          Industry Distribution was one of three columns, leaving it ~310px on a
+          1280px viewport — too narrow for a donut plus a readable legend, which
+          is what forced the labels to overflow and then truncate away. Full
+          width gives the legend room for the industry names it exists to show. */}
+      <div className="flex flex-col gap-4">
+        <div className="animate-fade-up" style={{ animationDelay: "80ms", animationFillMode: "backwards" }}>
           <LeadGrowthChart />
         </div>
         <div className="animate-fade-up" style={{ animationDelay: "140ms", animationFillMode: "backwards" }}>
