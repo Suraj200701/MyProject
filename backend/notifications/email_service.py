@@ -31,6 +31,15 @@ from config.settings import settings
 logger = logging.getLogger("leadmaster.email")
 
 RESEND_ENDPOINT = "https://api.resend.com/emails"
+RESEND_TIMEOUT_SECONDS = 15
+
+# aiosmtplib defaults to 60s, which is the wrong shape of number for a send
+# that happens inline in signup and password reset. On a host that blocks
+# outbound SMTP there is no RST to fail fast on — the packets are dropped, so
+# the full timeout is always spent, and the browser gives up first and reports
+# a network error. A blocked port and a dead mail server both announce
+# themselves well within 10s; anything longer is just the user waiting.
+SMTP_TIMEOUT_SECONDS = 10
 
 
 class EmailDeliveryError(RuntimeError):
@@ -67,7 +76,7 @@ async def _send_via_resend(to: str, subject: str, html_body: str, text_body: str
     if text_body:
         payload["text"] = text_body
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=RESEND_TIMEOUT_SECONDS) as client:
         response = await client.post(
             RESEND_ENDPOINT,
             headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
@@ -98,6 +107,7 @@ async def _send_via_smtp(to: str, subject: str, html_body: str, text_body: str |
         username=settings.SMTP_USER or None,
         password=settings.SMTP_PASSWORD or None,
         start_tls=settings.SMTP_USE_TLS,
+        timeout=SMTP_TIMEOUT_SECONDS,
     )
 
 
