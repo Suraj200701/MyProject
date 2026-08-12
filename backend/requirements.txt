@@ -31,6 +31,14 @@ slowapi==0.1.9
 httpx==0.28.1
 stripe==11.4.1
 
+# --- HTML parsing ---
+# Both are imported at module scope by services/enrichment/extractors.py, so a
+# missing one is an import-time crash, not a degraded feature. lxml is not
+# optional here either: every call site asks for it by name — the "lxml" parser
+# argument raises FeatureNotFound rather than falling back to html.parser.
+beautifulsoup4==4.15.0
+lxml==6.1.1
+
 # --- Email ---
 aiosmtplib==3.0.2
 jinja2==3.1.5
