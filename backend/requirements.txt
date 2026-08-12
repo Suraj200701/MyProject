@@ -3,6 +3,15 @@ fastapi==0.115.6
 uvicorn[standard]==0.34.0
 gunicorn==23.0.0
 
+# Pinned although fastapi and httpx already pull them in. Our own modules import
+# both directly — starlette in main.py and the middleware, anyio in
+# services/storage.py and utils/url_guard.py — so relying on a transitive
+# install means an upstream dependency change can break our imports silently.
+# Both values sit inside what fastapi/httpx accept today (fastapi wants
+# starlette>=0.40.0,<0.42.0); a future fastapi bump may need these raised too.
+starlette==0.41.3
+anyio==4.14.2
+
 # --- Settings & validation ---
 pydantic==2.10.4
 pydantic-settings==2.7.1
