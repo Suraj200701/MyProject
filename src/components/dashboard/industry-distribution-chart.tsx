@@ -34,7 +34,16 @@ export function IndustryDistributionChart() {
         emptyMessage="No industry data yet — run a search to populate this."
         className="h-[264px] p-5"
       >
-      <div className="flex flex-col items-center gap-4 p-5 sm:flex-row">
+      {/* `@container` + `@md:flex-row`, not `sm:flex-row`.
+          `sm:` asks how wide the *window* is, but this card is one of three
+          `lg:grid-cols-3` columns — roughly 310px on a 1280px viewport. So the
+          side-by-side layout engaged with nowhere near enough room, and the
+          legend either overflowed the card (before `min-w-0`) or truncated to
+          nothing (after it), leaving bare percentages with no labels.
+          A container query asks how wide *this card* is, which is the question
+          that actually matters. */}
+      <div className="@container">
+      <div className="flex flex-col items-center gap-4 p-5 @md:flex-row">
         <div className="h-56 w-full max-w-[220px] shrink-0">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -79,6 +88,7 @@ export function IndustryDistributionChart() {
             </div>
           ))}
         </div>
+      </div>
       </div>
       </AsyncContent>
     </Card>
