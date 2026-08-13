@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { errorMessage } from "@/lib/api/client";
 import { authApi } from "@/lib/api/endpoints";
 import { useAuth } from "@/lib/auth/auth-context";
+import { PASSWORD_RULES_HINT, passwordProblem } from "@/lib/auth/password-rules";
 import Link from "next/link";
 
 function GoogleIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -76,8 +77,9 @@ export default function SignupPage() {
       toast.error("Please fill in all fields.");
       return;
     }
-    if (password.length < 8) {
-      toast.error("Password must be at least 8 characters.");
+    const passwordIssue = passwordProblem(password);
+    if (passwordIssue) {
+      toast.error(passwordIssue);
       return;
     }
     if (!agreedToTerms) {
@@ -180,7 +182,7 @@ export default function SignupPage() {
               {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>
-          <p className="text-xs text-muted-foreground">Must be at least 8 characters.</p>
+          <p className="text-xs text-muted-foreground">{PASSWORD_RULES_HINT}</p>
         </div>
 
         <div className="flex items-start gap-2">

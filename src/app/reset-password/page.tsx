@@ -29,14 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { errorMessage } from "@/lib/api/client";
 import { authApi } from "@/lib/api/endpoints";
-
-/** Mirrors `_validate_password_strength` in backend/schemas/user.py. */
-function passwordProblem(value: string): string | null {
-  if (value.length < 8) return "Password must be at least 8 characters long";
-  if (!/[A-Z]/.test(value)) return "Password must contain at least one uppercase letter";
-  if (!/\d/.test(value)) return "Password must contain at least one digit";
-  return null;
-}
+import { PASSWORD_RULES_HINT, passwordProblem } from "@/lib/auth/password-rules";
 
 function ResetPasswordPageContent() {
   const router = useRouter();
@@ -162,9 +155,7 @@ function ResetPasswordPageContent() {
               {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            At least 8 characters, with one uppercase letter and one digit.
-          </p>
+          <p className="text-xs text-muted-foreground">{PASSWORD_RULES_HINT}</p>
         </div>
 
         <div className="flex flex-col gap-2">
